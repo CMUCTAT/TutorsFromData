@@ -37,8 +37,8 @@
                     withCredentials: undefined
                 };
 
-                var scriptIndex = 4;
-                function runSimulation(){
+    var scriptIndex = 4;
+    function runSimulation(){
         //update detector list with user-selected values
         //...
         let inputFilePath = null;
@@ -91,6 +91,33 @@
     function changeColor(str){
         document.getElementById(str).style.background='#000000';
     }
+
+    function downloadAfterSave(d) {
+        console.log("downloadAfterSave(",d,")");
+        let a=document.createElement("a");
+        a.id="a"+(new Date()).getTime();
+        a.download=d.replace(/.*[\/]/, "");
+        a.href=d;
+        a.style="display: none;";
+        document.body.appendChild(a);
+        console.log("downloadAfterSave(): to click a", a);
+        a.click();
+        $(a).remove();
+    }
+
+    function saveFile(fileName, fileContent) {
+        console.log("saveFile(", fileName, ", ",fileContent, ")")
+        let fsAddr = (/127[.]0[.]0[.]1|localhost/.test(document.location.origin) ? "http://127.0.0.1:3000" : "/cgi-bin/htmlsave.sh");
+        $.post(fsAddr+"?file="+fileName+"&guid="+CTATGuid.guid(), fileContent == null ? document.head.outerHTML+"\n"+document.body.outerHTML+"\n" : fileContent, null, "text").then(
+            downloadAfterSave,
+            function(j,t,r){console.log("err j", j, "; t", t, "; r", r, ";enderr")
+        });
+    }
+
+    function saveBRD() {
+        saveFile((CTATConfiguration.get("question_file") || 'DSExportToCTATScript.brd').replace(/.*\//,""),
+                CTAT.ToolTutor.tutor.getGraph().toXML(CTAT.ToolTutor.tutor) || '<?xml version="1.0" encoding="UTF-8"?><stateGraph/>');
+	}
     </script>
 
 </head>
@@ -121,6 +148,7 @@
 </style>
 
 <body>
+ <p>times #ux97; times</p>
     <div class=outer-block id='mainDiv'><center><b><p  style="font-size:22px">Untutored Data<br>Graph Builder<p></b>
         <div class=inner-block>
             <p style="font-size:16px"><b>1. Import</b></p>
@@ -139,9 +167,10 @@
 
             <div class=inner-block>
                 <p style="font-size:16px"><b>3. Export</b></p>
-                <center><a href='#' class="myButton"
-                    onclick='downloadCSV({ filename: "output.csv" });'
-                    ><b>Download CSV</b></a></center>
+                <center style="width: 80%;">
+                    <a href='#' class="myButton" onclick='downloadCSV({ filename: "output.csv" });'><b>Download CSV</b></a>
+                    <a href='#' class="myButton" onclick='saveBRD();'><b>Save BRD</b></a>
+                </center>
                 </div>
 
             </div>
