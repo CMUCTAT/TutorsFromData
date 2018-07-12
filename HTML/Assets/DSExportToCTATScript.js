@@ -4,11 +4,24 @@ var problems = [];
 var cy;
 var edgesToHide, nodesToHide;
 var graph;
-var edgeFreqs;
+var edgeFreqs = {};
 var allPaths;
 var cy2;
 var ui;
 var interfaceFilePath;
+var elts = [];
+function runTask2() {
+    //console.log("button pressed");
+
+    var g = CTAT.ToolTutor.tutor.getGraph();
+    /*var Gjson = buildJSON(g, []);
+    console.log("Gjson", Gjson);
+    cy.json(JSON.parse(Gjson));
+    var layout = cy.layout({name: 'cose'});
+    layout.run();*/
+    runTask1GivenJSON(g);
+}
+
 
 function getInterface() {
     interfaceFilePath = null;
@@ -158,6 +171,7 @@ function addPathToInterface() {
     //first log the SAIs in path
     path.edges().forEach(function(edge) {
         console.log(edge.data("info"))
+
     });
     
 
@@ -329,7 +343,7 @@ function updateEdgeFreqs() {
     nodesToHide.remove();
 }
 
-function runTask1GivenJSON() {
+function runTask1GivenJSON(ggraph) {
     cy = cytoscape({
         container: document.getElementById('cy'),
         hideLabelsOnViewport: true
@@ -385,7 +399,18 @@ function runTask1GivenJSON() {
         ]
     });*/
 
-    buildGraphForProblem();
+   
+    
+
+
+    if(ggraph)
+    {
+        graph = ggraph;
+    }
+    else
+    {    
+        buildGraphForProblem();  //sets global graph
+    }
     //console.log("button pressed 2");
     cy.json(JSON.parse(buildJSON(graph, edgeFreqs)));
     var layout = cy.layout({
@@ -404,6 +429,7 @@ function runTask1GivenJSON() {
                     gravity: 0.1
                  });
     layout.run();
+
 
     allPaths = [];
     cy.nodes().leaves().forEach(function(leaf) {
@@ -463,8 +489,9 @@ function runTask1GivenJSON() {
             break;
         }
     }
-
-    document.getElementById("numStudentsProblem").value = Object.entries(problemsAndPaths[problems[chosenProblem]]).length
+    if(ggraph) 
+        return;
+    document.getElementById("numStudentsProblem").value = Object.entries(problemsAndPaths[problems[chosenProblem]]).length;
 
     totalSAIs=0;
     objectified = Object.entries(edgeFreqs)

@@ -1052,6 +1052,7 @@ CTATProblem = function() {
   var tutor_flag = "tutor";
   var problem_file = "";
   var student_interface = "";
+  var urlPrefix = "";
   var state = "notstarted";
   this.setState = function setState(aValue) {
     state = aValue;
@@ -1071,6 +1072,12 @@ CTATProblem = function() {
   this.getDescription = function getDescription() {
     return description;
   };
+  this.setURLPrefix = function setURLPrefix(aValue) {
+    urlPrefix = aValue;
+  };
+  this.getURLPrefix = function getURLPrefix() {
+    return urlPrefix;
+  };
   this.setTutorFlag = function setTutorFlag(aValue) {
     tutor_flag = aValue;
   };
@@ -1081,17 +1088,20 @@ CTATProblem = function() {
     problem_file = aValue;
   };
   this.getProblemFile = function getProblemFile() {
-    return problem_file;
+    return urlPrefix + problem_file;
   };
   this.setStudentInterface = function setStudentInterface(aValue) {
     student_interface = aValue;
   };
   this.getStudentInterface = function getStudentInterface() {
-    return student_interface;
+    return urlPrefix + student_interface;
   };
 };
 CTATProblem.prototype = Object.create(CTATBase.prototype);
 CTATProblem.prototype.constructor = CTATProblem;
+CTATProblem.prototype.toString = function() {
+  return this.getProblemFile() + " on " + this.getStudentInterface();
+};
 goog.provide("CTATProblemSet");
 goog.require("CTATBase");
 goog.require("CTATProblem");
@@ -1240,6 +1250,7 @@ CTATPackage = function() {
   var pointer = this;
   var root = null;
   var parser = new CTATXML;
+  var urlPrefix = "";
   var problems = new CTATProblemSet;
   var problemSets = [problems];
   this.init = function init(aDocRoot) {
@@ -1260,15 +1271,8 @@ CTATPackage = function() {
         for (var j = 0;j < problemList.length;j++) {
           var aProblemElement = problemList[j];
           pointer.ctatdebug("Problem [" + j + "] desc: " + parser.getElementAttr(aProblemElement, "description") + ", interface: " + parser.getElementAttr(aProblemElement, "student_interface") + ", brd: " + parser.getElementAttr(aProblemElement, "problem_file"));
-          var newProblem = new CTATProblem;
-          newProblem.setName(parser.getElementAttr(aProblemElement, "name"));
-          newProblem.setLabel(parser.getElementAttr(aProblemElement, "label"));
-          newProblem.setDescription(parser.getElementAttr(aProblemElement, "description"));
+          var newProblem = pointer.addProblem(parser.getElementAttr(aProblemElement, "problem_file"), parser.getElementAttr(aProblemElement, "student_interface"), parser.getElementAttr(aProblemElement, "name"), parser.getElementAttr(aProblemElement, "label"), parser.getElementAttr(aProblemElement, "description"));
           newProblem.setTutorFlag(parser.getElementAttr(aProblemElement, "tutor_flag"));
-          newProblem.setProblemFile(parser.getElementAttr(aProblemElement, "problem_file"));
-          newProblem.setStudentInterface(parser.getElementAttr(aProblemElement, "student_interface"));
-          pointer.ctatdebug("Adding problem ...");
-          problems.addProblem(newProblem);
         }
       }
       if (rootEntityName == "ProblemSets") {
@@ -1278,6 +1282,25 @@ CTATPackage = function() {
         pointer.ctatdebug("Processing Assets ...");
       }
     }
+  };
+  this.addProblem = function(problemFile, studentInterface, name, label, description) {
+    var newProblem = new CTATProblem;
+    newProblem.setProblemFile(problemFile);
+    newProblem.setStudentInterface(studentInterface);
+    newProblem.setName(name ? name : problemFile);
+    newProblem.setLabel(label ? label : problemFile);
+    newProblem.setDescription(description ? description : problemFile);
+    newProblem.setURLPrefix(urlPrefix);
+    pointer.ctatdebug("Adding problem ...");
+    var pSets = pointer.getProblemSets();
+    pSets[0].addProblem(newProblem);
+    return newProblem;
+  };
+  this.setURLPrefix = function setURLPrefix(aValue) {
+    urlPrefix = aValue;
+  };
+  this.getURLPrefix = function getURLPrefix() {
+    return urlPrefix;
   };
   this.getProblems = function getProblems() {
     return problems;
@@ -1382,7 +1405,7 @@ CTATConnection = function(substVars) {
           try {
             pointer.ctatdebug("Creating Msxml2.XMLHTTP ...");
             httpObject = new ActiveXObject("Msxml2.XMLHTTP");
-          } catch (e$1) {
+          } catch (e$2) {
             try {
               pointer.ctatdebug("Creating Microsoft.XMLHTTP ...");
               httpObject = new ActiveXObject("Microsoft.XMLHTTP");
@@ -1398,7 +1421,7 @@ CTATConnection = function(substVars) {
   }
   function init() {
     pointer.ctatdebug("init ()");
-    var fVars = flashVars ? flashVars.getRawFlashVars() : substituteFlashVars;
+    var fVars = flashVars ? flashVars.getRawFlashVars() : substituteFlashVars ? substituteFlashVars : {};
     var aSession = fVars["session_id"] ? fVars["session_id"] : "dummySession";
     if (httpObject !== null) {
       if (aSession == "dummySession") {
@@ -1454,8 +1477,8 @@ CTATConnection = function(substVars) {
           xhr.send();
         }
       }
-    } catch (err$2) {
-      this.ctatdebug("Error in newConnection.httpObject.send: " + err$2.message);
+    } catch (err$3) {
+      this.ctatdebug("Error in newConnection.httpObject.send: " + err$3.message);
       return;
     }
   };
@@ -3002,6 +3025,13 @@ CTATLMS.init.SCORM = function() {
   };
   CTATLMS.getProblemState = function(handler) {
     var pResult = CTATLMS.getValue("cmi.suspend_data");
+    if (!pResult && window.parent && typeof window.parent.doLMSGetLastError == "function") {
+      var lastError = window.parent.doLMSGetLastError();
+      if (lastError != 0) {
+        console.log("Empty result with error " + lastError + " from LMS.getValue('cmi.suspend_data'):", window.parent.doLMSGetErrorString ? window.parent.doLMSGetErrorString(lastError) : "");
+        return handler(null);
+      }
+    }
     return handler(pResult);
   };
   CTATLMS.gradeStudent = function(correct_steps, required_steps) {
@@ -3749,11 +3779,16 @@ CTATSequencer = function() {
       sequenceReadyHandler(packageManager);
     }
   };
-  this.init = function init(aPackageURL, aHandler) {
-    pointer.ctatdebug("init (" + aPackageURL + ", " + aHandler + ")");
+  this.init = function init(aPackageURL, aHandler, aURLPrefix) {
+    useDebuggingBasic = true;
+    pointer.ctatdebug("init (" + aPackageURL + ", " + aHandler + ", " + aURLPrefix + ")");
+    packageManager.setURLPrefix(aURLPrefix);
     sequenceReadyHandler = aHandler;
     retriever = new CTATCommLibrary(null, false);
     retriever.retrieveXMLFile(aPackageURL, parser, this);
+  };
+  this.getSequenceType = function() {
+    return "fixed";
   };
   this.getProblemSetSize = function getProblemSetSize() {
     pointer.ctatdebug("getProblemSetSize ()");
@@ -3788,12 +3823,26 @@ CTATSequencer = function() {
       var pList = packageManager.getProblems();
       return pList;
     } else {
-      return pList;
+      var pSet = pSets[0];
+      return pSet.getProblems();
     }
     return null;
   };
   this.getNextProblem = function getNextProblem(currentIndex) {
     pointer.ctatdebug("getNextProblem ()");
+    var pSets = packageManager.getProblemSets();
+    if (pSets.length == 0) {
+      pointer.ctatdebug("Error: no problem sets available, trying list of problems directly ...");
+      var pList = packageManager.getProblems();
+      return pList[currentIndex];
+    } else {
+      var pSet = pSets[0];
+      return pSet.getProblems()[currentIndex];
+    }
+    return null;
+  };
+  this.addProblem = function(problemFile, studentInterface, name, label, description) {
+    packageManager.addProblem(problemFile, studentInterface, name, label, description);
   };
 };
 CTATSequencer.prototype = Object.create(CTATBase.prototype);
@@ -6158,6 +6207,7 @@ CTATMessage = function(aMessage) {
   var successMsg = "";
   var buggyMsg = "";
   var highlightmessage = "";
+  var shouldLog = true;
   var url;
   var sai = null;
   var studentSAI = null;
@@ -6614,6 +6664,12 @@ CTATMessage = function(aMessage) {
     }
     this.setProperty(CTATMessage.TRANSACTION_ID_TAG, id);
   };
+  this.suppressLogging = function() {
+    shouldLog = false;
+  };
+  this.isLoggingSuppressed = function() {
+    return !shouldLog;
+  };
   CTATMessage.create = function(givMessageType, verb) {
     var result = new CTATMessage;
     result.init(givMessageType);
@@ -6739,8 +6795,8 @@ CTATShellTools = {ctat_base:new CTATBase("CTATShellTools", "shelltools"), compon
   } else {
     jqn = $("#" + aName);
   }
-  for (var i$3 = 0;jqn.length === 0 && i$3 < queriesToTry.length;i$3++) {
-    jqn = $(queriesToTry[i$3]);
+  for (var i$4 = 0;jqn.length === 0 && i$4 < queriesToTry.length;i$4++) {
+    jqn = $(queriesToTry[i$4]);
   }
   if (jqn.length > 0) {
     jqn.each(function() {
@@ -6844,7 +6900,7 @@ CTATTutoringServiceMessageBuilder = function() {
     message += "</properties></message>";
     return message;
   };
-  this.createSetPreferencesMessage = function createSetPreferencesMessage(versionNum) {
+  this.createSetPreferencesMessage = function createSetPreferencesMessage(versionNum, interfaceDescs) {
     this.ctatdebug("createSetPreferencesMessage ()");
     var vars = CTATConfiguration.getRawFlashVars();
     var message = "<message><verb>NotePropertySet</verb><properties><MessageType>SetPreferences</MessageType>";
@@ -6897,6 +6953,9 @@ CTATTutoringServiceMessageBuilder = function() {
       message += CTATSkillSet.skills.toSetPreferencesXMLString();
     }
     message += "<CommShellVersion>" + versionNum + "</CommShellVersion>";
+    if (interfaceDescs) {
+      message += interfaceDescs;
+    }
     message += "</properties></message>";
     return xmlHeader + message;
   };
@@ -7096,7 +7155,7 @@ CTATMessageHandler = function(commShell) {
                 commShell.propagateShellEvent("InterfaceDescription", aMessage);
                 break;
               case "GetAllInterfaceDescriptions":
-                commShell.getAllInterfaceDescriptions();
+                commShell.sendInterfaceDescriptionMessages();
                 commShell.propagateShellEvent("GetAllInterfaceDescriptions", aMessage);
                 break;
               case "SendWidgetLock":
@@ -8426,7 +8485,7 @@ CTATCommShell = function() {
       this.ctatdebug("There is no info flash var");
     }
     console.log("Connecting to: " + prefix + vars["remoteSocketURL"] + ":" + vars["remoteSocketPort"]);
-    var prefMessage = commMessageBuilder.createSetPreferencesMessage(version);
+    var prefMessage = commMessageBuilder.createSetPreferencesMessage(version, this.getAllInterfaceDescriptions());
     commLibrary.sendXMLURL(prefMessage, prefix + vars["remoteSocketURL"] + ":" + vars["remoteSocketPort"], CTATConfiguration.get("collaborators"));
     initializeScrimForCollaboration();
     pointer.addGlobalEventListener(CTATTransactionListener.create(vars[CTATTransactionListener.scriptParam]));
@@ -8587,14 +8646,9 @@ CTATCommShell = function() {
   };
   this.getAllInterfaceDescriptions = function getAllInterfaceDescriptions() {
     pointer.ctatdebug("getAllInterfaceDescriptions ()");
-    pointer.sendInterfaceDescriptionMessages();
-  };
-  this.sendInterfaceDescriptionMessages = function sendInterfaceDescriptionMessages() {
-    pointer.ctatdebug("sendInterfaceDescriptionMessages ()");
-    var cList = CTATShellTools.getAllComponents();
-    var descMessages = '<?xml version="1.0" encoding="UTF-8"?><message><verb>NotePropertySet</verb><properties><MessageType>MessageBundle</MessageType><messages>';
+    var descMessages = "<messages>";
     var builder = new CTATTutoringServiceMessageBuilder;
-    var interface_actions = [];
+    var cList = CTATShellTools.getAllComponents();
     for (var i = 0;i < cList.length;i++) {
       var aComponent = cList[i];
       pointer.ctatdebug("Getting component interface description message for: " + aComponent.getName());
@@ -8606,7 +8660,14 @@ CTATCommShell = function() {
         });
       }
     }
-    descMessages += "</messages></properties></message>";
+    descMessages += "</messages>";
+    return descMessages;
+  };
+  this.sendInterfaceDescriptionMessages = function sendInterfaceDescriptionMessages() {
+    pointer.ctatdebug("sendInterfaceDescriptionMessages ()");
+    var descMessages = '<?xml version="1.0" encoding="UTF-8"?><message><verb>NotePropertySet</verb><properties><MessageType>MessageBundle</MessageType>';
+    descMessages += pointer.getAllInterfaceDescriptions();
+    descMessages += "</properties></message>";
     pointer.ctatdebug("Final bundle: " + descMessages);
     commLibrary.sendXMLNoBundle(descMessages);
   };
@@ -8876,6 +8937,8 @@ CTATCommShell = function() {
       if (commLoggingLibrary != null) {
         if (gotProblemRestoreEnd) {
           commLoggingLibrary.logTutorResponse(aMessage.getTransactionID(), logHintSAI, semanticEvent, "", evalObj, advice, skillObject, customFieldNames, customFieldValues);
+        } else {
+          aMessage.suppressLogging();
         }
       } else {
         this.ctatdebug("Info: no logging library available!");
@@ -8960,7 +9023,7 @@ CTATCommShell = function() {
       pointer.ctatdebug("Method executed, continuing with post-processing ...");
       if (commMessageHandler.getInStartState() == true) {
         var action = aMessage.getAction();
-        if (action && action.toLowerCase().startsWith("updatetext")) {
+        if (action && action.toLowerCase().startsWith("updatetext") && !target.getDivWrap().className.includes("CTATTextField")) {
           target.setEnabled(!Boolean(lockWidgetsSetInStartState));
         }
       }
@@ -9009,8 +9072,12 @@ CTATCommShell = function() {
     CTATScrim.scrim.scrimDown();
     CTATScrim.scrim.errorScrimUp(aTitle + " - " + details);
   };
-  this.processProblemSummaryResponse = function processProblemSummaryResponse(aMessage) {
-    pointer.ctatdebug("processProblemSummaryResponse()");
+  this.processProblemSummaryResponse = function processProblemSummaryResponse(aMessage, iscb) {
+    pointer.ctatdebug("processProblemSummaryResponse() iscb " + iscb);
+    if (commLoggingLibrary && !iscb) {
+      commLoggingLibrary.then(pointer.processProblemSummaryResponse(aMessage, true));
+      return;
+    }
     if (CTATLMS.processProblemSummary) {
       CTATLMS.processProblemSummary(aMessage.getXMLObject());
     }
@@ -9121,8 +9188,8 @@ CTATCommShell = function() {
       }
       try {
         document.write(aMessage);
-      } catch (err$4) {
-        alert("Error writing document: " + err$4.message);
+      } catch (err$5) {
+        alert("Error writing document: " + err$5.message);
       }
     }
   };
@@ -12992,10 +13059,12 @@ CTATJumble = function(aDescription, aX, aY, aWidth, aHeight) {
   };
   var _drag_source = null;
   var handleDragStart = function(e) {
-    e.target.classList.add("CTATJumble--item--home");
-    _drag_source = e.target;
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/html", e.target.innerHTML);
+    if (/CTATJumble/.test(e.target.className)) {
+      e.target.classList.add("CTATJumble--item--home");
+      _drag_source = e.target;
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/html", e.target.innerHTML);
+    }
   };
   var handleDragOver = function(e) {
     if (e.preventDefault) {
@@ -13014,21 +13083,24 @@ CTATJumble = function(aDescription, aX, aY, aWidth, aHeight) {
     if (e.stopPropagation) {
       e.stopPropagation();
     }
-    $(drag_area).children().removeClass("CTATJumble--item--over");
-    if (_drag_source != this) {
-      _drag_source.innerHTML = this.innerHTML;
-      var id = _drag_source.id;
-      _drag_source.id = this.id;
-      this.innerHTML = e.dataTransfer.getData("text/html");
-      this.id = id;
-      pointer.setInput(pointer.getOrder());
-      pointer.processAction();
+    if (_drag_source) {
+      $(drag_area).children().removeClass("CTATJumble--item--over");
+      if (_drag_source != this) {
+        _drag_source.innerHTML = this.innerHTML;
+        var id = _drag_source.id;
+        _drag_source.id = this.id;
+        this.innerHTML = e.dataTransfer.getData("text/html");
+        this.id = id;
+        pointer.setInput(pointer.getOrder());
+        pointer.processAction();
+      }
     }
     return false;
   };
   var handleDragEnd = function(e) {
     this.classList.remove("CTATJumble--item--home");
     $(drag_area).children().removeClass("CTATJumble--item--over");
+    _drag_source = null;
   };
   var super_setEnabled = this.setEnabled;
   this.setEnabled = function(bool) {
@@ -13288,8 +13360,8 @@ try {
 CTAT.Geom.Point.useDOMMatrix = true;
 try {
   new DOMMatrix;
-} catch (e$5) {
-  if (e$5 instanceof ReferenceError) {
+} catch (e$6) {
+  if (e$6 instanceof ReferenceError) {
     CTAT.Geom.Point.useDOMMatrix = false;
   }
 }
@@ -13433,9 +13505,9 @@ goog.provide("CTAT.Geom.Rectangle");
 goog.require("CTAT.Geom.Point");
 try {
   new DOMRect;
-} catch (e$6) {
-  console.log("WARNING: new DOMRect():", e$6, typeof e$6);
-  if (e$6 instanceof ReferenceError || e$6 instanceof TypeError) {
+} catch (e$7) {
+  console.log("WARNING: new DOMRect():", e$7, typeof e$7);
+  if (e$7 instanceof ReferenceError || e$7 instanceof TypeError) {
     console.log("    Using shim!");
     var DOMRect = function(x, y, w, h) {
       this.x = x || 0;
@@ -15885,14 +15957,21 @@ CTATTextField = function(aDescription, aX, aY, aWidth, aHeight) {
     pointer.setInitialized(true);
     pointer.addComponentReference(pointer, textfield);
     pointer.setEditable(false);
-    pointer.setEnabled(false);
+    var isEnabled = textfield.getAttribute("data-ctat-enabled");
+    isEnabled = isEnabled && isEnabled.toLowerCase() == "true";
+    pointer.setEnabled(isEnabled);
     pointer.render();
     pointer.addSafeEventListener("focus", pointer.processFocus, textfield);
+  };
+  var super_setEnabled = this.setEnabled.bind(this);
+  this.setEnabled = function(e) {
+    super_setEnabled(e);
+    pointer.setEditable(false);
   };
   var initMarkers = function() {
     [startMarker, endMarker].forEach(function(m, idx) {
       var marker = document.createElement("span"), handle = document.createElement("div"), isStart = idx == 0;
-      marker.className = "marker";
+      marker.className = "ctattextfield-marker";
       marker.id = isStart ? "start-marker" : "end-marker";
       handle.className = "handle";
       marker.appendChild(handle);
@@ -15951,22 +16030,27 @@ CTATTextField = function(aDescription, aX, aY, aWidth, aHeight) {
     return ret;
   };
   var processMouseup = function(e) {
-    var range = null;
-    pointer.clearSelectionMarkers();
-    if (window.getSelection) {
-      var sel = window.getSelection();
-      if (sel.getRangeAt) {
-        range = sel.getRangeAt(0);
+    if (pointer.getEnabled()) {
+      var range = null;
+      pointer.clearSelectionMarkers();
+      if (window.getSelection) {
+        var sel = window.getSelection();
+        if (sel.getRangeAt) {
+          range = sel.getRangeAt(0);
+        }
+      } else {
+        if (document.selection && document.selection.createRange) {
+          range = document.selection.createRange();
+        }
       }
-    } else {
-      if (document.selection && document.selection.createRange) {
-        range = document.selection.createRange();
+      if (range && !range.collapsed && textfield.contains(range.startContainer) && range.startContainer == range.endContainer) {
+        activeSelection = range.startOffset + "," + range.endOffset;
+        pointer.processAction();
+        pointer.setSelectionMarkers(range);
+      } else {
+        activeSelection = "0,0";
+        pointer.processAction();
       }
-    }
-    if (range && !range.collapsed && textfield.contains(range.startContainer) && range.startContainer == range.endContainer) {
-      activeSelection = range.startOffset + "," + range.endOffset;
-      pointer.processAction();
-      pointer.setSelectionMarkers(range);
     }
   };
   this.setSelectionMarkers = function(range) {
@@ -15997,8 +16081,12 @@ CTATTextField = function(aDescription, aX, aY, aWidth, aHeight) {
     }
   };
   this.getValue = function() {
-    var content = this.getDivWrap().innerHTML;
-    return activeSelection ? activeSelection + ";" + content : content;
+    var ret = content = "" + this.getDivWrap().innerHTML;
+    if (activeSelection) {
+      content = content.replace(/<span.*?class="ctattextfield-marker".*?>.*?<\/span>/g, "");
+      ret = activeSelection + ";" + content;
+    }
+    return ret;
   };
   var super_updateSAI = this.updateSAI.bind(this);
   this.updateSAI = function() {
@@ -16366,46 +16454,81 @@ Object.defineProperty(CTATTutor, "parser", {get:function() {
   }
   return this._parser;
 }});
+CTATTutor.initializeHTMLComponent = function(divWrap, componentType) {
+  var CTATComponentConstructor = CTAT.ComponentRegistry[componentType];
+  var ctat_component;
+  if (ctat_component = $(divWrap).data("CTATComponent")) {
+    return ctat_component;
+  }
+  ctat_component = new CTATComponentConstructor;
+  if ($(divWrap).attr("id")) {
+    ctat_component.setName($(divWrap).attr("id"));
+  } else {
+    divWrap.setAttribute("id", CTATGlobalFunctions.gensym.div_id());
+    ctat_component.setName(divWrap.getAttribute("id"));
+  }
+  ctat_component.setDivWrapper(divWrap);
+  ctat_component.processAttributes();
+  ctat_component.init();
+  ctat_component.processTabOrder();
+  ctat_component.setEnabled(ctat_component.getEnabled());
+  if (ctat_component.isFeedbackComponent() == false) {
+    var compEntry = new CTATComponentDescription;
+    compEntry.type = ctat_component.getClassName();
+    compEntry.name = ctat_component.getName();
+    compEntry.setComponentPointer(ctat_component);
+    CTATShellTools.registerComponentDescription(compEntry);
+  }
+  $(divWrap).data("CTATComponent", ctat_component);
+  if (CTATConfiguration.get("previewMode")) {
+    var restore = ctat_component.getDivWrap().getAttribute("data-ctat-enabled");
+    var isEnabled = ctatEnabledInPreview[ctat_component.getClassName()];
+    if (!isEnabled) {
+      isEnabled = false;
+    }
+    ctat_component.setEnabled(isEnabled);
+    ctat_component.getDivWrap().setAttribute("data-ctat-enabled", restore);
+  }
+  return ctat_component;
+};
 CTATTutor.initializeHTMLComponents = function() {
   for (var CTATComponentType in CTAT.ComponentRegistry) {
     var CTATComponent = CTAT.ComponentRegistry[CTATComponentType];
     $("." + CTATComponentType).each(function() {
       if (!$(this).data("CTATComponent")) {
-        var ctat_component = new CTATComponent;
-        if ($(this).attr("id")) {
-          ctat_component.setName($(this).attr("id"));
-        } else {
-          this.setAttribute("id", CTATGlobalFunctions.gensym.div_id());
-          ctat_component.setName(this.getAttribute("id"));
-        }
-        ctat_component.setDivWrapper(this);
-        ctat_component.processAttributes();
-        ctat_component.init();
-        ctat_component.processTabOrder();
-        ctat_component.setEnabled(ctat_component.getEnabled());
-        if (ctat_component.isFeedbackComponent() == false) {
-          var compEntry = new CTATComponentDescription;
-          compEntry.type = ctat_component.getClassName();
-          compEntry.name = ctat_component.getName();
-          compEntry.setComponentPointer(ctat_component);
-          CTATShellTools.registerComponentDescription(compEntry);
-        }
-        $(this).data("CTATComponent", ctat_component);
-        if (CTATConfiguration.get("previewMode")) {
-          var restore = ctat_component.getDivWrap().getAttribute("data-ctat-enabled");
-          var isEnabled = ctatEnabledInPreview[ctat_component.getClassName()];
-          if (!isEnabled) {
-            isEnabled = false;
-          }
-          ctat_component.setEnabled(isEnabled);
-          ctat_component.getDivWrap().setAttribute("data-ctat-enabled", restore);
-        }
+        CTATTutor.initializeHTMLComponent(this, CTATComponentType);
       }
     });
   }
   CTATShellTools.listComponents();
   ctatdebug("initializeHTMLComponents () done");
 };
+var CTATComponentMutObserver = new MutationObserver(function(mutations, pointer) {
+  mutations.forEach(function(mutation) {
+    if (mutation.addedNodes) {
+      var CTATClass = null, CTATComponent = null, nodes = mutation.addedNodes, l = nodes.length;
+      for (var i = 0;i < l;i++) {
+        var addedNode = nodes[i];
+        if (addedNode.nodeType === Node.ELEMENT_NODE) {
+          addedNode.childNodes && (nodes = Array.prototype.concat.call(nodes, Array.from(addedNode.childNodes)));
+          l = nodes.length;
+          var CTATClassRegex = /(CTAT[A-z]*)(\s|$)/g;
+          while (ctatClass = CTATClassRegex.exec(addedNode.className)) {
+            if (CTAT.ComponentRegistry[ctatClass[1]]) {
+              CTATComponentMutObserver.disconnect();
+              CTATTutor.initializeHTMLComponent(addedNode, ctatClass[1]);
+              CTATComponentMutObserver.observe(document.body, {childList:true, subtree:true});
+              break;
+            }
+          }
+        }
+      }
+    }
+  });
+});
+document.addEventListener("DOMContentLoaded", function() {
+  CTATComponentMutObserver.observe(document.body, {childList:true, subtree:true});
+});
 CTATTutor.callComponentFunction = function(componentDiv, func, arg) {
   var componentArr = CTATShellTools.findComponent(componentDiv.id);
   if (componentArr && componentArr.length > 0) {
@@ -16645,7 +16768,6 @@ CTATTutor.runTutor = function() {
   ctatdebug("runTutor () ... all set");
 };
 CTATTutor.initTutor = function(aFlashVars, aDiv, aCanvas, usingFlash) {
-  console.trace("CTATTutor.initTutor() CTATTarget, aFlashVars: ", CTATTarget, aFlashVars);
   ctatdebug("initTutor() #aFlashVars " + (aFlashVars ? aFlashVars.length : null) + ", usingFlash " + usingFlash);
   if (CTATTutor.tutorInitialized == true) {
     ctatdebug("Tutor already initialized, probably in author mode");
@@ -17099,7 +17221,7 @@ var CTATNoolsTracerUtil = function() {
       var valStr;
       try {
         valStr = "values: " + JSON.stringify(fact.object);
-      } catch (e$7) {
+      } catch (e$8) {
         valStr = "< Error converting fact to JSON >";
       }
       ret += valStr;
@@ -17108,12 +17230,45 @@ var CTATNoolsTracerUtil = function() {
     }
     return ret;
   };
+  this.getFacts = function(session, optType) {
+    var arg2 = optType, facts = [];
+    if (Array.isArray(arg2)) {
+      for (var $jscomp$iter$0 = $jscomp.makeIterator(arg2), $jscomp$key$type = $jscomp$iter$0.next();!$jscomp$key$type.done;$jscomp$key$type = $jscomp$iter$0.next()) {
+        type = $jscomp$key$type.value;
+        facts = facts.concat(this.getFacts(session, type));
+      }
+      return facts;
+    } else {
+      if (Number.isInteger(optType)) {
+        return this.getFact(session, optType);
+      } else {
+        facts = session.getFacts(optType, true);
+      }
+    }
+    return facts.map(function(fact) {
+      return fact.object;
+    });
+  };
+  this.getFact = function(session, id) {
+    var ret = null, list;
+    if (typeof id === "number") {
+      ret = session.getFact(id);
+      ret && (ret = ret.object);
+    } else {
+      if (!id || typeof id === "string") {
+        list = this.getFacts(session, id);
+        list && (ret = list[0]);
+      }
+    }
+    return ret;
+  };
   this.printFacts = function(session, optType) {
     var arg2 = optType, factStr = "";
     if (Array.isArray(arg2)) {
-      for (var $jscomp$iter$0 = $jscomp.makeIterator(arg2), $jscomp$key$optType = $jscomp$iter$0.next();!$jscomp$key$optType.done;$jscomp$key$optType = $jscomp$iter$0.next()) {
+      for (var $jscomp$iter$1 = $jscomp.makeIterator(arg2), $jscomp$key$optType = $jscomp$iter$1.next();!$jscomp$key$optType.done;$jscomp$key$optType = $jscomp$iter$1.next()) {
         optType = $jscomp$key$optType.value;
         factStr += Number.isInteger(optType) ? this.printFact(session, optType, true) : this.printFacts(session, optType);
+        factStr += "\n";
       }
       return factStr;
     } else {
@@ -17128,12 +17283,21 @@ var CTATNoolsTracerUtil = function() {
       var valStr;
       try {
         valStr = "values: " + JSON.stringify(fact.object) + "\n";
-      } catch (e$8) {
+      } catch (e$9) {
         valStr = "< Error converting fact to JSON >\n";
       }
       factStr += valStr;
     });
     return factStr;
+  };
+  this.printRules = function(session, optSubstr) {
+    var ruleList = session.getRuleNames();
+    if (optSubstr) {
+      ruleList = ruleList.filter(function(rule) {
+        return rule.toLowerCase().includes(optSubstr);
+      });
+    }
+    return ruleList.join(", ");
   };
   this.printCtNodeMatch = function(session, nodeId) {
     var match = session.getNodeMatcherResult(nodeId), studentAction, tutorAction, matchStr;
@@ -17273,15 +17437,18 @@ var CTATNoolsTracerUtil = function() {
             }
           }
           return msgStr + "\nRule " + (ruleMatched ? "" : "not ") + "matched";
-        } catch (e$9) {
+        } catch (e$10) {
           console.log("got here: " + msgStr);
-          throw e$9;
+          throw e$10;
         }
       } else {
         return "Rule " + ruleName + " not found";
       }
     };
   }();
+  this.printBreakpoints = function(session) {
+    return "breakpoints set for rules: " + session.getBreakpoints().join(", ");
+  };
 };
 goog.provide("CTATNoolsTracerWrapper");
 CTATNoolsTracerWrapper = function(tracer) {
@@ -17295,8 +17462,17 @@ CTATNoolsTracerWrapper = function(tracer) {
   this.printFact = function(fId) {
     tracerRef.printFact(fId);
   };
+  this.getFact = function(fId) {
+    return tracerRef.getFact(fId);
+  };
   this.printFacts = function(optType) {
     tracerRef.printFacts(optType);
+  };
+  this.getFacts = function(optType) {
+    return tracerRef.getFacts(optType);
+  };
+  this.printRules = function(optSubstr) {
+    tracerRef.printRules(optSubstr);
   };
   this.printMatch = function(ctNodeId) {
     tracerRef.printCtNodeMatch(ctNodeId);
@@ -17313,6 +17489,9 @@ CTATNoolsTracerWrapper = function(tracer) {
   this.setBreakpoint = function(ruleName, everyOrFirst) {
     tracerRef.setBreakpoint(ruleName, everyOrFirst);
   };
+  this.printBreakpoints = function() {
+    tracerRef.printBreakpoints();
+  };
   this.resume = function() {
     tracerRef.resume();
   };
@@ -17328,11 +17507,11 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
   var initialized = false;
   var flow = null;
   var session = null;
-  var studentSAIs = {}, ruleChains = {selectionMap:{}}, lastStudentSAI = null;
+  var studentSAIs = {}, ruleChains = {selectionMap:{}, numChains:0}, lastStudentSAI = null;
   var currChain = {links:[], lengthAtBranchStack:[], matchType:null};
   var iAmMovingForward = false;
   var noolsUtil = null;
-  var startStateMsgs = [], problemConfig = {use_backtracking:false, prune_old_activations:false, use_hint_fact:false, search_mode:"combination"};
+  var startStateMsgs = [], problemConfig = {use_backtracking:false, prune_old_activations:false, use_hint_fact:false, search_all_permutations:true, hint_out_of_order:false};
   var lastFoundMatch = true;
   var iAmHintMatching = false, lastMatchWasHint = false, isHintMatchFact = null;
   var skillMap = {};
@@ -17348,6 +17527,9 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
   };
   this.getSkills = function() {
     return skillMap;
+  };
+  this.getProblemAttribute = function(attrName) {
+    return problemConfig[attrName];
   };
   this.init = function(srcFile, cbk, errCbk) {
     log("debug", "noolstracer init w/ source file: " + srcFile);
@@ -17373,6 +17555,9 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
         }
         _firstMatch(function() {
           registerTracerWrapper(new CTATNoolsTracerWrapper(pointer));
+          log("override", "tracer initialized, log flags: ");
+          getTracerLogFlags();
+          printBreakpoints();
           cbk(startStateMsgs, problemConfig);
         });
       });
@@ -17412,6 +17597,7 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
         _clearPerMatchVars();
         _assertSAI(sai, true);
         nextCbk = function() {
+          _cleanupBeforeCallback();
           pointer.printAgenda("agenda_post");
           callback();
         };
@@ -17446,11 +17632,12 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
     ruleChains.firstTutorSelection = null;
     ruleChains.matchChain = null;
     ruleChains.bugMatchChain = null;
+    ruleChains.numChains = 0;
     lastStudentSAI = null, lastFoundMatch = true;
     _firstMatch(cbk);
   };
   this.printAgenda = function(logFlag) {
-    log(logFlag, (logFlag !== "override" ? logFlag + ": " : "") + noolsUtil.printAgenda(session));
+    log(logFlag, (logFlag !== "override" ? "[" + logFlag + "]: " : "") + noolsUtil.printAgenda(session));
   };
   this.printConflictTree = function(logFlag, firedOnly) {
     log(logFlag, noolsUtil.printConflictTree(session, firedOnly));
@@ -17461,11 +17648,25 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
   this.printFacts = function(optType) {
     log("override", noolsUtil.printFacts(session, optType));
   };
+  this.printRules = function(optSubstr) {
+    log("override", noolsUtil.printRules(session, optSubstr));
+  };
+  this.getFact = function(id) {
+    var fact = noolsUtil.getFact(session, id);
+    return fact;
+  };
+  this.getFacts = function(optType) {
+    var facts = noolsUtil.getFacts(session, optType);
+    return facts;
+  };
   this.printCtNodeMatch = function(nodeId) {
     log("override", noolsUtil.printCtNodeMatch(session, nodeId));
   };
   this.printRuleNodes = function(ruleName) {
     log("override", noolsUtil.printRuleNodes(session, ruleName));
+  };
+  this.printBreakpoints = function() {
+    log("override", noolsUtil.printBreakpoints(session));
   };
   this.setInStepMode = function(step) {
     step = step && step !== "false";
@@ -17513,7 +17714,6 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
   };
   function _firstMatch(cbk) {
     startStateMsgs = [];
-    problemConfig = {};
     session.setDoBacktracking(false);
     log("debug", "starting initial match");
     nextCbk = function() {
@@ -17522,7 +17722,7 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
       nextMatchIsFirst = true;
       session.setPruneOldActivations(problemConfig["prune_old_activations"]);
       session.setDoBacktracking(problemConfig["use_backtracking"]);
-      session.setSearchMode(problemConfig["search_mode"]);
+      session.setSearchAllPermutations(problemConfig["search_all_permutations"]);
       initialized = true;
       typeof cbk === "function" && cbk();
     };
@@ -17565,19 +17765,19 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
     cntr.count += matches.length;
     log("debug", baseURL + " is importing " + matches.length + " files");
     if (matches.length > 0) {
-      var $jscomp$loop$25 = {};
-      $jscomp$loop$25.i = 0;
-      for (;$jscomp$loop$25.i < matches.length;$jscomp$loop$25 = {url$10:$jscomp$loop$25.url$10, i:$jscomp$loop$25.i}, $jscomp$loop$25.i++) {
-        $jscomp$loop$25.url$10 = matches[$jscomp$loop$25.i];
-        $.ajax($jscomp$loop$25.url$10, {dataType:"text", success:function($jscomp$loop$25) {
+      var $jscomp$loop$27 = {};
+      $jscomp$loop$27.i = 0;
+      for (;$jscomp$loop$27.i < matches.length;$jscomp$loop$27 = {url$11:$jscomp$loop$27.url$11, i:$jscomp$loop$27.i}, $jscomp$loop$27.i++) {
+        $jscomp$loop$27.url$11 = matches[$jscomp$loop$27.i];
+        $.ajax($jscomp$loop$27.url$11, {dataType:"text", success:function($jscomp$loop$27) {
           return function(data) {
-            _handleImports(data, $jscomp$loop$25.url$10, imported, cbk, cntr, depth + 1, $jscomp$loop$25.i);
+            _handleImports(data, $jscomp$loop$27.url$11, imported, cbk, cntr, depth + 1, $jscomp$loop$27.i);
             cntr.count--;
             if (cntr.count == 0) {
               cbk(_assembleChunks(cntr.chunks));
             }
           };
-        }($jscomp$loop$25), error:function(req, err, errThrown) {
+        }($jscomp$loop$27), error:function(req, err, errThrown) {
           log("error", "Error in _handleImports() : ");
           log("error", err);
         }});
@@ -17608,6 +17808,21 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
     }, backtrack:function() {
       session.setAboutToBacktrack();
     }, assert:_assertOverride, modify:_modifyOverride, retract:_retractOverride, halt:_haltOverride};
+    [CTATAlgebraParser, CTATLogicParser, CTATChemParser].forEach(function(constructor) {
+      var parser = new constructor;
+      var $jscomp$loop$28 = {};
+      for (var f in parser) {
+        $jscomp$loop$28.f = f;
+        if (typeof parser[$jscomp$loop$28.f] === "function") {
+          scope[$jscomp$loop$28.f] = function($jscomp$loop$28) {
+            return function() {
+              return parser[$jscomp$loop$28.f].apply(parser, arguments);
+            };
+          }($jscomp$loop$28);
+        }
+        $jscomp$loop$28 = {f:$jscomp$loop$28.f};
+      }
+    });
     try {
       flow = nools.compile(model, {"name":flowName || "CTATFlow", "scope":scope});
     } catch (err) {
@@ -17651,7 +17866,7 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
   function _assertSAI(newSAI, isTutored) {
     log("debug", "Assert sai (" + (!isTutored ? "un" : "") + "tutored) : " + JSON.stringify(newSAI));
     var oldSAI = studentSAIs[newSAI.selection];
-    if (oldSAI) {
+    if (oldSAI && session.factExists(oldSAI)) {
       oldSAI.input = newSAI.input;
       oldSAI.tutored = isTutored;
       session.modify(oldSAI);
@@ -17677,6 +17892,10 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
       isHintMatchFact = new IsHintMatch;
     }
     session.assert(isHintMatchFact, "_isHintMatch");
+  }
+  function _cleanupBeforeCallback() {
+    session.prepForMatch();
+    session.restoreAgenda();
   }
   function _match(numSteps) {
     searchEnded = false;
@@ -17757,6 +17976,15 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
         tSAI = checkSelection(s);
       }
       if (!tSAI) {
+        var n = ruleChains.numChains;
+        for (var i = 0;i < n;i++) {
+          if (selectionMap["_default_key" + i]) {
+            tSAI = selectionMap["_default_key" + i][0];
+            break;
+          }
+        }
+      }
+      if (!tSAI) {
         tSAI = DEFAULT_CHAIN;
       }
     }
@@ -17826,6 +18054,7 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
     ruleChains.selectionMap = {};
     ruleChains.matchChain = null;
     ruleChains.bugMatchChain = null;
+    ruleChains.numChains = 0;
     currChain.links = [];
     currChain.lengthAtBranchStack = [];
     currChain.matchType = null;
@@ -17868,11 +18097,15 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
       }
       return ret;
     });
-    if (!selectionMap[selection]) {
-      selectionMap[selection] = [];
+    if (!selection) {
+      selection = "_default_key" + ruleChains.numChains;
+    } else {
       if (!ruleChains.firstTutorSelection) {
         ruleChains.firstTutorSelection = selection;
       }
+    }
+    if (!selectionMap[selection]) {
+      selectionMap[selection] = [];
     }
     chainObj = {sai:finalSAI, rules:ruleList, skills:skillList, hints:hintList, msg:msg || "", customFields:JSON.parse(JSON.stringify(customFields))};
     selectionMap[selection].push(chainObj);
@@ -17884,6 +18117,7 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
         ruleChains.matchChain = chainObj;
         break;
     }
+    ruleChains.numChains++;
     tpasToSend = tpaList;
     log("debug", "stored last chain: " + "\n\trules: " + ruleList + "\n\tskills: " + skillList + "\n\tfinalSAI: " + JSON.stringify(finalSAI) + "\n\tmatchType: " + currChain.matchType);
   }
@@ -17929,7 +18163,7 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
     var factVals;
     try {
       factVals = JSON.stringify(fact);
-    } catch (e$11) {
+    } catch (e$12) {
       factVals = "< Error converting fact to JSON >";
     }
     log("assert", type + " fact asserted with ID " + id + ": " + factVals);
@@ -17949,9 +18183,9 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
         break;
       case "hint":
         if (initialized) {
-          var lastLink$12 = currChain.links[currChain.links.length - 1];
-          fact.pos = currChain.links.length + lastLink$12.hints.length / (lastLink$12.hints.length + 1);
-          lastLink$12.hints.push(fact);
+          var lastLink$13 = currChain.links[currChain.links.length - 1];
+          fact.pos = currChain.links.length + lastLink$13.hints.length / (lastLink$13.hints.length + 1);
+          lastLink$13.hints.push(fact);
         }
         break;
     }
@@ -17993,38 +18227,71 @@ var CTATNoolsTracer = function(logFunc, tpaHandler) {
   }
 };
 goog.provide("CTATLogger");
-CTATLogger = function() {
+CTATLogger = function(validFlags) {
   var flags = {};
+  if (validFlags) {
+    validFlags.forEach(function(flag) {
+      flags[flag] = false;
+    });
+  }
   this.isSet = function(flag) {
     return !!flags[flag];
   };
   this.set = function(flag) {
-    flags[flag] = true;
+    if (validFlags && !(flag in flags)) {
+      return false;
+    }
+    return flags[flag] = true;
   };
   this.unset = function(flag) {
-    flags[flag] = false;
+    if (validFlags && !(flag in flags)) {
+      return false;
+    }
+    return !(flags[flag] = false);
+  };
+  this.getFlags = function() {
+    return flags;
   };
   this.log = function(flag, msg) {
     if (flags[flag] || flag === "override") {
-      console.log(msg);
+      console.log((flag !== "override" ? "[" + flag + "]: " : "") + msg);
     }
   };
 };
 goog.provide("CTATRuleTracerGlobals");
 goog.require("CTATLogger");
-var CTATNoolsTracerLogger = new CTATLogger;
+var NOOLS_LOG_FLAGS = ["assert", "modify", "retract", "state_save", "state_restore", "backtrack", "agenda_insert", "agenda_retract", "fire", "error", "debug", "sai_check", "agenda_pre", "agenda_post", "tpa"];
+var CTATNoolsTracerLogger = new CTATLogger(NOOLS_LOG_FLAGS);
 var globalTracerRef = null;
 function registerTracerWrapper(tracerWrapper) {
   globalTracerRef = tracerWrapper;
 }
 function setTracerLogFlag(flag) {
-  CTATNoolsTracerLogger.set(flag);
+  var msg = CTATNoolsTracerLogger.set(flag) ? "set flag " + flag : "Error - invalid flag: " + flag;
+  CTATNoolsTracerLogger.log("override", msg);
 }
 function setTracerLogFlags(flags) {
-  var toSet = flags instanceof Array ? flags : Array.prototype.slice.call(arguments);
+  var toSet = flags instanceof Array ? flags : Array.prototype.slice.call(arguments), didSet = [], didntSet = [];
   toSet.forEach(function(flag) {
-    setTracerLogFlag(flag);
+    if (CTATNoolsTracerLogger.set(flag)) {
+      didSet.push(flag);
+    } else {
+      didntSet.push(flag);
+    }
   });
+  didSet.length && CTATNoolsTracerLogger.log("override", "set flags: " + didSet.join(","));
+  didntSet.length && CTATNoolsTracerLogger.log("override", "Error - invalid flag(s): " + didntSet.join(","));
+}
+function getTracerLogFlags() {
+  var flags = CTATNoolsTracerLogger.getFlags(), set = [], unset = [];
+  for (var flag in flags) {
+    if (flags[flag]) {
+      set.push(flag);
+    } else {
+      unset.push(flag);
+    }
+  }
+  CTATNoolsTracerLogger.log("override", "set: " + set.join(",") + "\nunset: " + unset.join(","));
 }
 function unsetTracerLogFlag(flag) {
   CTATNoolsTracerLogger.unset(flag);
@@ -18044,8 +18311,17 @@ function printConflictTree(firedOnly) {
 function printFact(fId) {
   globalTracerRef.printFact(fId);
 }
+function getFact(fId) {
+  return globalTracerRef.getFact(fId);
+}
 function printFacts(optType) {
   globalTracerRef.printFacts(optType);
+}
+function getFacts(optType) {
+  return globalTracerRef.getFacts(optType);
+}
+function printRules(optSubstr) {
+  globalTracerRef.printRules(optSubstr);
 }
 function printMatch(nodeId) {
   globalTracerRef.printMatch(nodeId);
@@ -18061,6 +18337,9 @@ function takeSteps(numSteps, stopOnBacktrack) {
 }
 function setBreakpoint(ruleName, everyOrFirst) {
   globalTracerRef.setBreakpoint(ruleName, everyOrFirst);
+}
+function printBreakpoints() {
+  globalTracerRef.printBreakpoints();
 }
 function resume() {
   globalTracerRef.resume();
@@ -18107,9 +18386,14 @@ var CTATRuleTracer = function(m, exTracerHandle) {
     engine.evaluate({selection:sai.selection[0], action:sai.action[0], input:sai.input[0]}, null, "untutored_action");
   };
   this.checkOutOfOrder = function(resultObj, cbk) {
-    var studentInput = _simplifySAI(resultObj.getStudentSAI());
-    var lastMatchTutorSAIs = engine.getTutorSAIs();
-    var ret = !lastMatchTutorSAIs[studentInput.selection];
+    var ret;
+    if (engine.getProblemAttribute("hint_out_of_order")) {
+      var studentInput = _simplifySAI(resultObj.getStudentSAI());
+      var lastMatchTutorSAIs = engine.getTutorSAIs();
+      ret = !lastMatchTutorSAIs[studentInput.selection];
+    } else {
+      ret = false;
+    }
     cbk(ret);
   };
   this.setDefaultBuggyMsg = function(newMsg) {
@@ -18196,7 +18480,6 @@ var CTATRuleTracer = function(m, exTracerHandle) {
   }
   function _simplifySAI(sai) {
     var saiSimple = {selection:sai.getSelection() || "", action:sai.getAction() || "", input:sai.getInput() || ""};
-    console.log("_simplifySAI(" + sai + ") rtns {" + saiSimple.selection + "," + saiSimple.action + "," + saiSimple.input + ")");
     return saiSimple;
   }
 };
@@ -18459,7 +18742,7 @@ CTATVersionComparator = function() {
         if (0 !== result) {
           return result;
         }
-      } catch (e$13) {
+      } catch (e$14) {
         if (a1[i].toString() < a2[i].toString()) {
           result = -1;
         } else {
@@ -18847,6 +19130,7 @@ goog.require("CTATBase");
 goog.require("CTATMsgType");
 goog.require("CTATSAI");
 CTATMatcher = function(givenSingle, givenVector, givenCaseInsensitive) {
+  var matcher = null;
   CTATBase.call(this, "CTATMatcher", "");
   this.lastResult = null;
   var defaultSAI = new CTATSAI("", "", "");
@@ -18858,6 +19142,13 @@ CTATMatcher = function(givenSingle, givenVector, givenCaseInsensitive) {
   var linkTriggered = false;
   var that = this;
   this.resetMatcher = function() {
+  };
+  this.MatcherSAItoXML = function(indent) {
+    var result = indent + "<matcher>\n";
+    result += indent + "    <matcherType>Matcher</matcherType>\n";
+    result += indent + '    <matcherParameter name="single">' + singleValue + "</matcherParameter>\n";
+    result += indent + "</matcher>\n";
+    return result;
   };
   this.getSelection = function() {
     return that.getDefaultSelection();
@@ -19072,10 +19363,6 @@ if (typeof module !== "undefined") {
         return !list2.includes(item);
       });
     };
-    CTATTreeNode.prototype.addParens = function() {
-      this.parens++;
-      return this;
-    };
     CTATTreeNode.prototype.toString = function(string) {
       var i, j, ref;
       if (this.checkParens()) {
@@ -19180,7 +19467,6 @@ if (typeof module !== "undefined") {
       return this;
     };
     CTATTreeNode.prototype.flatten = function() {
-      this.parens = 0;
       return this;
     };
     CTATTreeNode.prototype.computeConstants = function() {
@@ -19468,7 +19754,6 @@ goog.require("CTATTreeNode");
       return this;
     };
     CTATAdditionNode.prototype.flatten = function() {
-      CTATAdditionNode.__super__.flatten.apply(this, arguments);
       this.simpleFlatten();
       return this.pushNegation();
     };
@@ -19691,7 +19976,6 @@ goog.require("CTATTreeNode");
       return this;
     };
     CTATMultiplicationNode.prototype.flatten = function() {
-      CTATMultiplicationNode.__super__.flatten.apply(this, arguments);
       this.simpleFlatten();
       return this.popNegation();
     };
@@ -19740,11 +20024,15 @@ goog.require("CTATTreeNode");
             if (group[1].constant(1)) {
               result.push(group[0]);
             } else {
-              if (!group[0].power()) {
-                result.push((new CTATPowerNode("EXP", group[0], group[1])).popInversion());
+              if (group[1].constant(-1)) {
+                result.push(group[0].invert());
               } else {
-                group[0].exponent.factors.unshift(group[1]);
-                result.push(group[0]);
+                if (!group[0].power()) {
+                  result.push((new CTATPowerNode("EXP", group[0], group[1])).popInversion());
+                } else {
+                  group[0].exponent.factors.unshift(group[1]);
+                  result.push(group[0]);
+                }
               }
             }
           }
@@ -20127,6 +20415,7 @@ goog.require("CTATTreeNode");
       return new CTATUnaryNode(this.operator, this.base, this.parens, this.sign, this.exp);
     };
     CTATUnaryNode.prototype.toString = function() {
+      this.base.setParens(this.operator);
       return CTATUnaryNode.__super__.toString.call(this, "" + CTATTreeNode.toOperatorString(this.operator) + this.base.toString());
     };
     CTATUnaryNode.prototype.evaluate = function() {
@@ -20141,7 +20430,6 @@ goog.require("CTATTreeNode");
       return CTATUnaryNode.__super__.simplify.apply(this, arguments);
     };
     CTATUnaryNode.prototype.flatten = function() {
-      CTATUnaryNode.__super__.flatten.apply(this, arguments);
       if (this.negation()) {
         this.negate();
         this.operator = "UPLUS";
@@ -20231,7 +20519,6 @@ goog.require("CTATTreeNode");
     };
     CTATPowerNode.prototype.flatten = function() {
       var factors, methods;
-      CTATPowerNode.__super__.flatten.apply(this, arguments);
       if (this.root()) {
         this.exponent.invert();
         this.operator = "EXP";
@@ -20544,6 +20831,7 @@ goog.require("CTATTreeNode");
       return this.evaluate() % 2 === 0;
     };
     CTATConstantNode.prototype.set = function(value) {
+      this.exp = 1;
       this.value = Math.abs(value);
       return this.sign = Math.sign(value);
     };
@@ -20642,13 +20930,13 @@ var CTATAlgebraGrammar = function() {
         this.$ = new yy.CTATPowerNode("ROOT", $$[$0], 2);
         break;
       case 24:
-        this.$ = $$[$0 - 1].addParens();
+        this.$ = $$[$0 - 1];
         break;
       case 25:
-        this.$ = new yy.CTATVariableNode(yy.variableTable, yytext);
+        this.$ = new yy.CTATVariableNode(yy.variableTable, $$[$0]);
         break;
       case 26:
-        this.$ = new yy.CTATConstantNode(Number(yytext));
+        this.$ = new yy.CTATConstantNode(Number($$[$0]));
         break;
     }
   }, table:[{3:1, 4:2, 6:3, 13:$V0, 14:4, 15:$V1, 17:5, 19:8, 22:9, 24:$V2, 25:$V3, 27:$V4, 28:$V5}, {1:[3]}, {5:[1, 14]}, {5:[2, 8], 7:[1, 15], 8:[1, 16], 9:[1, 17], 10:[1, 18], 11:[1, 19], 12:[1, 20], 13:$V6, 15:$V7}, o($V8, [2, 11], {22:9, 19:25, 16:$V9, 18:$Va, 20:$Vb, 21:$Vc, 24:$V2, 25:$V3, 27:$V4, 28:$V5}), o($Vd, [2, 17]), {13:$V0, 15:$V1, 17:28, 19:8, 22:9, 24:$V2, 25:$V3, 27:$V4, 28:$V5}, {13:$V0, 15:$V1, 17:29, 19:8, 22:9, 24:$V2, 25:$V3, 27:$V4, 28:$V5}, o($Vd, [2, 20]), o($Vd, [2, 23], 
@@ -21121,6 +21409,13 @@ goog.require("CTATTreeNode");
         return null;
       }
     };
+    CTATAlgebraParser.prototype.algStringify = function(tree) {
+      if (tree != null) {
+        return tree.toString();
+      } else {
+        return tree;
+      }
+    };
     CTATAlgebraParser.prototype.algEvaluate = function(expression) {
       try {
         return this.parser.parse(String(expression)).simplify(CTATAlgebraParser.none).evaluate();
@@ -21272,17 +21567,63 @@ goog.provide("CTATLogicTreeNode");
 (function() {
   var CTATLogicTreeNode;
   CTATLogicTreeNode = function() {
-    CTATLogicTreeNode.operators = [["CONST"], ["VAR"], ["NOT"], ["AND", "OR", "XOR", "IF", "IFF"]];
-    CTATLogicTreeNode.operatorPrecedence = function(operator1, operator2) {
-      return Math.sign(this.operators.findIndex(function(group) {
-        return group.includes(operator1);
-      }) - this.operators.findIndex(function(group) {
-        return group.includes(operator2);
-      }));
-    };
-    CTATLogicTreeNode.operatorStrings = {"NOT":"\u00ac", "AND":"\u2227", "OR":"\u2228", "XOR":"\u2295", "IF":"\u21d2", "IFF":"\u21d4", "true":"\u22a4", "false":"\u22a5"};
+    CTATLogicTreeNode.operators = [["CONST"], ["VAR"], ["NOT"], ["AND", "NAND"], ["OR", "NOR"], ["IF"], ["IFF", "XOR"]];
+    CTATLogicTreeNode.operatorStrings = {"NOT":"\u00ac", "AND":"\u2227", "OR":"\u2228", "NAND":"\u22bc", "NOR":"\u22bd", "XOR":"\u2295", "IF":"\u2192", "IFF":"\u2194", "true":"\u22a4", "false":"\u22a5"};
     CTATLogicTreeNode.toOperatorString = function(operator) {
       return this.operatorStrings[operator] || "";
+    };
+    CTATLogicTreeNode.diff = function(list1, list2) {
+      return list1.filter(function(item) {
+        return !list2.includes(item);
+      });
+    };
+    CTATLogicTreeNode.removeIndex = function(list, index) {
+      var ref;
+      list = list.slice(0);
+      [].splice.apply(list, [index, index - index + 1].concat(ref = [])), ref;
+      return list;
+    };
+    CTATLogicTreeNode.difference = function(list1, list2) {
+      return list1.filter(function(tree) {
+        return !list2.some(function(tree2) {
+          return tree2 === tree;
+        });
+      });
+    };
+    CTATLogicTreeNode.intersection = function(lists) {
+      return lists[0].filter(function(tree) {
+        return lists.every(function(list) {
+          return list.some(function(tree2) {
+            return tree2.equals(tree);
+          });
+        });
+      });
+    };
+    CTATLogicTreeNode.commonLength = function(lists) {
+      var length;
+      length = null;
+      return lists.every(function(list) {
+        return (length != null ? length : length = list.length) === list.length;
+      }) && length;
+    };
+    CTATLogicTreeNode.sameNegation = function(terms) {
+      return terms.length === 2 && terms[0].negationNode() === terms[1].negationNode();
+    };
+    CTATLogicTreeNode.oppositeNegation = function(terms) {
+      return terms.length === 2 && terms[0].negationNode() !== terms[1].negationNode();
+    };
+    CTATLogicTreeNode.replaceTerms = function(list, pairs, inverse) {
+      var i, len, pair, results, term;
+      results = [];
+      for (i = 0, len = list.length;i < len;i++) {
+        term = list[i];
+        if (!(pair = pairs.find(function(pair) {
+          return pair[0] === term;
+        })) || inverse && (term = term.junctionNode(this.removeIndex(term.terms, pair[1])))) {
+          results.push(term);
+        }
+      }
+      return results;
     };
     function CTATLogicTreeNode(item) {
       if (this.string != null) {
@@ -21291,17 +21632,31 @@ goog.provide("CTATLogicTreeNode");
         this.string = CTATLogicTreeNode.operatorStrings[item];
       }
     }
-    CTATLogicTreeNode.prototype.addParens = function() {
-      this.parens++;
+    CTATLogicTreeNode.prototype.addOperand = function(operator, operand, string) {
+      if (string == null) {
+        string = null;
+      }
+      return new CTATLogicFlattenNode(operator, [this, operand], string);
+    };
+    CTATLogicTreeNode.prototype.setParens = function() {
+      this.parens = true;
       return this;
     };
-    CTATLogicTreeNode.prototype.toString = function(string, inner) {
-      var i, j, ref;
-      if (inner == null) {
-        inner = false;
+    CTATLogicTreeNode.prototype.checkParens = function() {
+      var ref;
+      return (ref = this.operator) === "NOT" || ref === "VAR" || ref === "CONST" || this.parens;
+    };
+    CTATLogicTreeNode.prototype.toString = function(string, parenthesized, node, other) {
+      if (parenthesized == null) {
+        parenthesized = false;
       }
-      this.setParens(inner);
-      for (i = j = 0, ref = this.parens;0 <= ref ? j < ref : j > ref;i = 0 <= ref ? ++j : --j) {
+      if (node == null) {
+        node = null;
+      }
+      if (other == null) {
+        other = false;
+      }
+      if (this.addParens(parenthesized, node, other)) {
         string = "(" + string + ")";
       }
       if (this.negated) {
@@ -21309,26 +21664,26 @@ goog.provide("CTATLogicTreeNode");
       }
       return string;
     };
-    CTATLogicTreeNode.prototype.setParens = function(inner) {
-      var ref;
-      if (inner && ((ref = this.operator) === "AND" || ref === "OR" || ref === "XOR" || ref === "IF" || ref === "IFF")) {
-        return this.parens = 1;
-      }
+    CTATLogicTreeNode.prototype.addParens = function(parenthesized, node, other) {
+      return (this.left != null || this.terms != null) && node != null && (parenthesized || this.precedence() > node.precedence() || other && this.precedence() === node.precedence());
+    };
+    CTATLogicTreeNode.prototype.operatorString = function() {
+      return "" + (this.binaryOp() ? " " : "") + this.string + (this.binaryOp() ? " " : "");
     };
     CTATLogicTreeNode.prototype.evaluate = function(value) {
       if (this.negated) {
-        return compute("NOT", value);
+        return applyOperator("NOT", value);
       } else {
         return value;
       }
     };
-    CTATLogicTreeNode.prototype.compute = function(operator, operand1, operand2) {
+    CTATLogicTreeNode.prototype.applyOperator = function(operator, operand1, operand2) {
       switch(operator) {
         case "NOT":
           if (operand1 != null) {
             return !operand1;
           } else {
-            return null;
+            return void 0;
           }
         ;
         case "AND":
@@ -21348,7 +21703,7 @@ goog.provide("CTATLogicTreeNode");
       }
     };
     CTATLogicTreeNode.prototype.equals = function(node, inverse) {
-      return node && this.operator === node.operator && this.parens === node.parens && inverse !== (this.negated === node.negated);
+      return node && this.operator === node.operator && inverse !== (this.negated === node.negated);
     };
     CTATLogicTreeNode.prototype.inverse = function(node) {
       if (this.negationOp()) {
@@ -21361,88 +21716,356 @@ goog.provide("CTATLogicTreeNode");
         }
       }
     };
-    CTATLogicTreeNode.prototype.findAllOperators = function(operator, path) {
-      if (this.operator === operator) {
-        this.path = path;
-        return [this];
+    CTATLogicTreeNode.prototype.subNode = function(start, end) {
+      return this;
+    };
+    CTATLogicTreeNode.prototype.getOperator = function(string) {
+      if (string == null) {
+        string = false;
+      }
+      return !string && this.operator || this.string;
+    };
+    CTATLogicTreeNode.prototype.getOperators = function(string) {
+      if (string == null) {
+        string = false;
+      }
+      return [];
+    };
+    CTATLogicTreeNode.prototype.getVariables = function() {
+      return [];
+    };
+    CTATLogicTreeNode.prototype.getOperands = function() {
+      return [];
+    };
+    CTATLogicTreeNode.prototype.findOperator = function(operator, path, index) {
+      if (index == null) {
+        index = null;
+      }
+      if (!index && this.operator === operator && (this.terms == null || this.terms.length === 2)) {
+        return [Object.assign(this, {path:path})];
       } else {
-        return [];
+        if (index != null && this.operator === operator) {
+          return [Object.assign(this.subNode(index, index + 2), {path:path.concat([[index, index + 2]])})];
+        } else {
+          return [];
+        }
       }
     };
-    CTATLogicTreeNode.prototype.findAllExpressions = function(expression, path) {
-      if (this.equals(expression)) {
-        this.path = path;
-        return [this];
+    CTATLogicTreeNode.prototype.findExpression = function(expression, path, index) {
+      var end;
+      if (index == null) {
+        index = null;
+      }
+      if (!index && this.equals(expression)) {
+        return [Object.assign(this, {path:path})];
       } else {
-        return [];
+        if (index != null && this.subEquals(expression, index)) {
+          return [Object.assign(this.subNode(index, end = index + expression.terms.length), {path:path.concat([[index, end]])})];
+        } else {
+          return [];
+        }
       }
     };
-    CTATLogicTreeNode.prototype.replaceExpression = function(oldSubexpression, newSubexpression, path) {
-      if (path.length === 0) {
-        return newSubexpression;
+    CTATLogicTreeNode.prototype.findRule = function(rule, path, reverse, index) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (index == null) {
+        index = null;
+      }
+      if (!index && this.testRule(rule, reverse)) {
+        return [Object.assign(this, {path:path})];
       } else {
-        return null;
+        if (index != null && this.testRule(rule, reverse, index)) {
+          return [Object.assign(this.subNode(index, index + 2), {path:path.concat([[index, index + 2]])})];
+        } else {
+          return [];
+        }
       }
     };
-    CTATLogicTreeNode.prototype.simplify = function(methods) {
-      return this.simplifyNode(methods);
+    CTATLogicTreeNode.prototype.replaceExpression = function(oldSubexpression, newSubexpression, locator) {
+      var expression, ref, selector;
+      if (typeof locator === "number") {
+        locator = (ref = this.findExpression(oldSubexpression, [])[locator]) != null ? ref.path : void 0;
+      }
+      return (locator != null ? locator.length : void 0) === 0 && newSubexpression || (selector = locator != null ? locator.shift() : void 0) != null && (expression = this.clone(false)) && function() {
+        var ref1, ref2, ref3, ref4;
+        switch(false) {
+          case selector !== "left":
+            return expression.left = ((ref1 = this.left) != null ? ref1.replaceExpression(oldSubexpression, newSubexpression, locator) : void 0) || null;
+          case selector !== "right":
+            return expression.right = ((ref2 = this.right) != null ? ref2.replaceExpression(oldSubexpression, newSubexpression, locator) : void 0) || null;
+          case typeof selector !== "number":
+            return expression.terms[selector] = ((ref3 = this.terms[selector]) != null ? ref3.replaceExpression(oldSubexpression, newSubexpression, locator) : void 0) || null;
+          case typeof selector !== "object":
+            return [].splice.apply(expression.terms, [ref4 = selector[0], selector[1] - ref4].concat(newSubexpression)), newSubexpression;
+          default:
+            return null;
+        }
+      }.call(this) && expression || this;
     };
-    CTATLogicTreeNode.prototype.simplifyNode = function(methods) {
-      var j, len, method, result;
+    CTATLogicTreeNode.prototype.applyRules = function(rules, reverse, global) {
+      var i, len, ref, result, rule;
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (global == null) {
+        global = false;
+      }
       result = this;
-      for (j = 0, len = methods.length;j < len;j++) {
-        method = methods[j];
-        result = result[method].call(result);
-        result.methods = methods;
+      ref = typeof rules === "string" ? [rules] : rules;
+      for (i = 0, len = ref.length;i < len;i++) {
+        rule = ref[i];
+        result = result[rule](reverse);
+        result.rules = rules;
       }
-      delete result.methods;
+      delete result.rules;
       return result;
     };
-    CTATLogicTreeNode.prototype.commutativity = function() {
-      return this;
+    CTATLogicTreeNode.prototype.testRule = function(rule, reverse, index) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (index == null) {
+        index = null;
+      }
+      return this.subNode(index)[rule](reverse, true);
     };
-    CTATLogicTreeNode.prototype.associativity = function() {
-      return this;
+    CTATLogicTreeNode.prototype.findCounterExample = function(expression) {
+      return this.checkExpressions(expression, this.getVariables().concat(expression.getVariables()).uniq(), {}) || null;
     };
-    CTATLogicTreeNode.prototype.distributivity = function() {
-      return this;
+    CTATLogicTreeNode.prototype.checkExpressions = function(expression, variables, bindings) {
+      var obj, obj1;
+      if (variables.length) {
+        return this.checkExpressions(expression, variables.slice(1), Object.assign(bindings, (obj = {}, obj["" + variables[0]] = true, obj))) || this.checkExpressions(expression, variables.slice(1), Object.assign(bindings, (obj1 = {}, obj1["" + variables[0]] = false, obj1)));
+      } else {
+        if (this.evaluate(bindings) !== expression.evaluate(bindings)) {
+          return bindings;
+        }
+      }
     };
-    CTATLogicTreeNode.prototype.deMorgan = function() {
-      return this;
+    CTATLogicTreeNode.prototype.truth = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      return !test && this;
     };
-    CTATLogicTreeNode.prototype.doubleNegation = function() {
-      return this;
+    CTATLogicTreeNode.prototype.domination = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      return !test && this;
     };
-    CTATLogicTreeNode.prototype.implication = function() {
-      return this;
+    CTATLogicTreeNode.prototype.negation = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      return !test && this;
     };
-    CTATLogicTreeNode.prototype.biimplication = function() {
-      return this;
+    CTATLogicTreeNode.prototype.identity = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (reverse) {
+        return test || new CTATLogicFlattenNode("OR", this, new CTATLogicConstantNode(true));
+      } else {
+        return !test && this;
+      }
     };
-    CTATLogicTreeNode.prototype.biimplicationToImplication = function() {
-      return this;
+    CTATLogicTreeNode.prototype.idempotence = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (reverse) {
+        return test || new CTATLogicFlattenNode("OR", [this, this]);
+      } else {
+        return !test && this;
+      }
     };
-    CTATLogicTreeNode.prototype.exclusiveDisjunction = function() {
-      return this;
+    CTATLogicTreeNode.prototype.absorption = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      return !test && this;
     };
-    CTATLogicTreeNode.prototype.exclusiveDisjunctionToImplication = function() {
-      return this;
+    CTATLogicTreeNode.prototype.inverseAbsorption = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      return !test && this;
     };
-    CTATLogicTreeNode.prototype.disjunction = function() {
-      return new CTATLogicRelationNode("OR", this, this);
+    CTATLogicTreeNode.prototype.commutativity = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      return !test && this;
     };
-    CTATLogicTreeNode.prototype.conjunction = function() {
-      return new CTATLogicRelationNode("AND", this, this);
+    CTATLogicTreeNode.prototype.associativity = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      return !test && this;
+    };
+    CTATLogicTreeNode.prototype.distributivity = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      return !test && this;
+    };
+    CTATLogicTreeNode.prototype.deMorgan = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      return !test && this;
+    };
+    CTATLogicTreeNode.prototype.doubleNegation = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (reverse && !this.negationOp()) {
+        return test || this.negateNode().negateNode();
+      } else {
+        return !test && this;
+      }
+    };
+    CTATLogicTreeNode.prototype.implication = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      return !test && this;
+    };
+    CTATLogicTreeNode.prototype.biimplication = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      return !test && this;
+    };
+    CTATLogicTreeNode.prototype.biimplicationToImplication = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      return !test && this;
+    };
+    CTATLogicTreeNode.prototype.exclusiveDisjunction = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      return !test && this;
+    };
+    CTATLogicTreeNode.prototype.exclusiveDisjunctionToImplication = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      return !test && this;
+    };
+    CTATLogicTreeNode.prototype.findPairs = function(operator, list, func) {
+      var i, index2, len, results, term;
+      results = [];
+      for (i = 0, len = list.length;i < len;i++) {
+        term = list[i];
+        if (term.operator === operator && (index2 = term.terms.findIndex(function(_this) {
+          return function(term2) {
+            return term2[func](_this);
+          };
+        }(this))) !== -1) {
+          results.push([term, index2]);
+        }
+      }
+      return results;
     };
     CTATLogicTreeNode.prototype.replaceNodes = function() {
       return this;
     };
     CTATLogicTreeNode.prototype.flatten = function() {
-      this.parens = 0;
       return this;
     };
     CTATLogicTreeNode.prototype.pushNegation = function() {
       return this;
+    };
+    CTATLogicTreeNode.prototype.distributeDisjunction = function() {
+      return this;
+    };
+    CTATLogicTreeNode.prototype.distributeConjunction = function() {
+      return this;
+    };
+    CTATLogicTreeNode.prototype.sort = function() {
+      return this;
+    };
+    CTATLogicTreeNode.prototype.absorb = function() {
+      return this;
+    };
+    CTATLogicTreeNode.prototype.compare = function(node) {
+      return Math.sign(this.countLevels() - node.countLevels() || this.precedence(true) - node.precedence(true) || this.countVariables() - node.countVariables());
+    };
+    CTATLogicTreeNode.prototype.compareNegations = function(node) {
+      return this.negationNode() - node.negationNode();
+    };
+    CTATLogicTreeNode.prototype.precedence = function(sort) {
+      if (sort == null) {
+        sort = false;
+      }
+      return CTATLogicTreeNode.operators.findIndex(function(_this) {
+        return function(group) {
+          return group.includes(_this.operator);
+        };
+      }(this));
+    };
+    CTATLogicTreeNode.prototype.countVariables = function() {
+      return 0;
+    };
+    CTATLogicTreeNode.prototype.countLevels = function() {
+      return 0;
     };
     CTATLogicTreeNode.prototype.invertOperator = function() {
       this.operator = this.inverseOperator();
@@ -21460,30 +22083,6 @@ goog.provide("CTATLogicTreeNode");
         }
       }
     };
-    CTATLogicTreeNode.prototype.distributeDisjunction = function() {
-      return this;
-    };
-    CTATLogicTreeNode.prototype.distributeConjunction = function() {
-      return this;
-    };
-    CTATLogicTreeNode.prototype.sort = function() {
-      return this;
-    };
-    CTATLogicTreeNode.prototype.absorb = function() {
-      return this;
-    };
-    CTATLogicTreeNode.prototype.compare = function(node) {
-      return this.countLevels() - node.countLevels() || CTATLogicTreeNode.operatorPrecedence(this.operator, node.operator);
-    };
-    CTATLogicTreeNode.prototype.compareNegations = function(node) {
-      return this.negated - node.negated;
-    };
-    CTATLogicTreeNode.prototype.countVariables = function() {
-      return 0;
-    };
-    CTATLogicTreeNode.prototype.countLevels = function() {
-      return 0;
-    };
     CTATLogicTreeNode.prototype.negateNode = function() {
       return new CTATLogicRelationNode("NOT", null, this);
     };
@@ -21494,8 +22093,32 @@ goog.provide("CTATLogicTreeNode");
         return this;
       }
     };
+    CTATLogicTreeNode.prototype.unnegateOperator = function() {
+      if (this.negativeConjunctionOp()) {
+        return "AND";
+      } else {
+        if (this.negativeDisjunctionOp()) {
+          return "OR";
+        } else {
+          return this.operator;
+        }
+      }
+    };
+    CTATLogicTreeNode.prototype.negationNode = function() {
+      return this.negationOp() && !this.right.negationNode() || this.negated;
+    };
     CTATLogicTreeNode.prototype.negate = function() {
+      if (this.negated) {
+        this.setSteps(++this.steps);
+      }
       this.negated = !this.negated;
+      return this;
+    };
+    CTATLogicTreeNode.prototype.setSteps = function(count) {
+      if (count == null) {
+        count = 0;
+      }
+      this.steps = count;
       return this;
     };
     CTATLogicTreeNode.prototype.negationOp = function() {
@@ -21507,9 +22130,19 @@ goog.provide("CTATLogicTreeNode");
     CTATLogicTreeNode.prototype.disjunctionOp = function() {
       return this.operator === "OR";
     };
+    CTATLogicTreeNode.prototype.negativeConjunctionOp = function() {
+      return this.operator === "NAND";
+    };
+    CTATLogicTreeNode.prototype.negativeDisjunctionOp = function() {
+      return this.operator === "NOR";
+    };
     CTATLogicTreeNode.prototype.junctionOp = function() {
       var ref;
       return (ref = this.operator) === "AND" || ref === "OR";
+    };
+    CTATLogicTreeNode.prototype.negativeJunctionOp = function() {
+      var ref;
+      return (ref = this.operator) === "NAND" || ref === "NOR";
     };
     CTATLogicTreeNode.prototype.exclusiveDisjunctionOp = function() {
       return this.operator === "XOR";
@@ -21520,7 +22153,14 @@ goog.provide("CTATLogicTreeNode");
     CTATLogicTreeNode.prototype.biimplicationOp = function() {
       return this.operator === "IFF";
     };
+    CTATLogicTreeNode.prototype.binaryOp = function() {
+      var ref;
+      return (ref = this.operator) === "AND" || ref === "OR" || ref === "NAND" || ref === "NOR" || ref === "IF" || ref === "IFF" || ref === "XOR";
+    };
     CTATLogicTreeNode.prototype.constant = function(value) {
+      if (value == null) {
+        value = null;
+      }
       return false;
     };
     return CTATLogicTreeNode;
@@ -21550,283 +22190,300 @@ goog.require("CTATLogicTreeNode");
   }, hasProp = {}.hasOwnProperty;
   CTATLogicRelationNode = function(superClass) {
     extend(CTATLogicRelationNode, superClass);
-    function CTATLogicRelationNode(operator1, left1, right1, string, parens, negated) {
+    function CTATLogicRelationNode(operator1, left1, right1, string1, negated) {
       this.operator = operator1;
       this.left = left1;
       this.right = right1;
-      this.string = string != null ? string : null;
-      this.parens = parens != null ? parens : 0;
+      this.string = string1 != null ? string1 : null;
       this.negated = negated != null ? negated : false;
       CTATLogicRelationNode.__super__.constructor.call(this, this.operator);
     }
-    CTATLogicRelationNode.prototype.clone = function() {
-      return new CTATLogicRelationNode(this.operator, this.left, this.right, this.string, this.parens, this.negated);
-    };
-    CTATLogicRelationNode.prototype.toString = function(inner) {
+    CTATLogicRelationNode.prototype.clone = function(deep) {
       var ref;
-      if (inner == null) {
-        inner = false;
+      if (deep == null) {
+        deep = true;
       }
-      return CTATLogicRelationNode.__super__.toString.call(this, "" + (((ref = this.left) != null ? ref.toString(true) : void 0) || "") + ("" + this.string) + this.right.toString(true), inner);
+      return new CTATLogicRelationNode(this.operator, deep ? ((ref = this.left) != null ? ref.clone() : void 0) || null : this.left, deep ? this.right.clone() : this.right, this.string, this.negated);
     };
-    CTATLogicRelationNode.prototype.evaluate = function() {
+    CTATLogicRelationNode.prototype.toString = function(parenthesized, node, other) {
+      var ref, ref1, ref2;
+      if (parenthesized == null) {
+        parenthesized = false;
+      }
+      if (node == null) {
+        node = null;
+      }
+      if (other == null) {
+        other = false;
+      }
+      return CTATLogicRelationNode.__super__.toString.call(this, "" + (((ref = this.left) != null ? ref.toString(parenthesized, this, (ref1 = this.operator) === "IF" || ref1 === "IFF" || ref1 === "XOR") : void 0) || "") + ("" + this.operatorString()) + this.right.toString(parenthesized, this, (ref2 = this.operator) === "AND" || ref2 === "NAND" || ref2 === "OR" || ref2 === "NOR"), parenthesized, node, other);
+    };
+    CTATLogicRelationNode.prototype.evaluate = function(bindings) {
       var left, ref, right;
-      left = (ref = this.left) != null ? ref.evaluate() : void 0;
-      right = this.right.evaluate();
+      if (bindings == null) {
+        bindings = null;
+      }
+      left = (ref = this.left) != null ? ref.evaluate(bindings) : void 0;
+      right = this.right.evaluate(bindings);
       return CTATLogicRelationNode.__super__.evaluate.call(this, function() {
         switch(this.operator) {
           case "NOT":
             return this.applyOperator("NOT", right);
-          case "AND":
-            return this.applyOperator("AND", left, right);
-          case "OR":
-            return this.applyOperator("OR", left, right);
+          case "NAND":
+            return this.applyOperator("NOT", this.applyOperator("AND", left, right));
+          case "NOR":
+            return this.applyOperator("NOT", this.applyOperator("OR", left, right));
           case "IF":
             return this.applyOperator("OR", this.applyOperator("NOT", left), right);
-          case "XOR":
-            return this.applyOperator("OR", this.applyOperator("AND", left, this.applyOperator("NOT", right)), this.applyOperator("AND", this.applyOperator("NOT", left), right));
           case "IFF":
             return this.applyOperator("OR", this.applyOperator("AND", left, right), this.applyOperator("AND", this.applyOperator("NOT", left), this.applyOperator("NOT", right)));
+          case "XOR":
+            return this.applyOperator("OR", this.applyOperator("AND", left, this.applyOperator("NOT", right)), this.applyOperator("AND", this.applyOperator("NOT", left), right));
         }
       }.call(this));
     };
     CTATLogicRelationNode.prototype.equals = function(node, inverse) {
       return CTATLogicRelationNode.__super__.equals.call(this, node, inverse) && (this.left == null || this.left.equals(node.left, false)) && this.right.equals(node.right, false);
     };
-    CTATLogicRelationNode.prototype.findAllOperators = function(operator, path) {
+    CTATLogicRelationNode.prototype.getOperators = function(string) {
       var ref, ref1;
-      return ((ref = (ref1 = this.left) != null ? ref1.findAllOperators(operator, path.concat(["left"])) : void 0) != null ? ref : []).concat(CTATLogicRelationNode.__super__.findAllOperators.apply(this, arguments)).concat(this.right.findAllOperators(operator, path.concat(["right"])));
+      if (string == null) {
+        string = false;
+      }
+      return ((ref = (ref1 = this.left) != null ? ref1.getOperators(string) : void 0) != null ? ref : []).concat(this.getOperator(string), this.right.getOperators(string));
     };
-    CTATLogicRelationNode.prototype.findAllExpressions = function(expression, path) {
+    CTATLogicRelationNode.prototype.getVariables = function() {
       var ref, ref1;
-      return ((ref = (ref1 = this.left) != null ? ref1.findAllExpressions(expression, path.concat(["left"])) : void 0) != null ? ref : []).concat(CTATLogicRelationNode.__super__.findAllExpressions.apply(this, arguments)).concat(this.right.findAllExpressions(expression, path.concat(["right"])));
+      return ((ref = (ref1 = this.left) != null ? ref1.getVariables() : void 0) != null ? ref : []).concat(this.right.getVariables());
     };
-    CTATLogicRelationNode.prototype.replaceExpression = function(oldSubexpression, newSubexpression, path) {
-      var obj, selector;
-      return CTATLogicRelationNode.__super__.replaceExpression.apply(this, arguments) || (selector = path.shift(), Object.assign(this.clone(), (obj = {}, obj["" + selector] = this[selector].replaceExpression(oldSubexpression, newSubexpression, path), obj)));
-    };
-    CTATLogicRelationNode.prototype.simplify = function(methods) {
-      var ref;
-      this.left = (ref = this.left) != null ? ref.simplify(methods) : void 0;
-      this.right = this.right.simplify(methods);
-      return CTATLogicRelationNode.__super__.simplify.apply(this, arguments);
-    };
-    CTATLogicRelationNode.prototype.commutativity = function() {
-      if (this.junctionOp()) {
-        return new CTATLogicRelationNode(this.operator, this.right, this.left);
+    CTATLogicRelationNode.prototype.getOperands = function() {
+      if (this.left != null) {
+        return [this.left, this.right];
       } else {
-        return this;
+        return [this.right];
       }
     };
-    CTATLogicRelationNode.prototype.associativity = function() {
-      if (this.junctionOp() && this.left.junctionOp() && this.operator === this.left.operator) {
-        return new CTATLogicRelationNode(this.operator, this.left.left, new CTATLogicRelationNode(this.operator, this.left.right, this.right));
+    CTATLogicRelationNode.prototype.findOperator = function(operator, path) {
+      var ref, ref1;
+      return ((ref = (ref1 = this.left) != null ? ref1.findOperator(operator, path.concat(["left"])) : void 0) != null ? ref : []).concat(CTATLogicRelationNode.__super__.findOperator.call(this, operator, path), this.right.findOperator(operator, path.concat(["right"])));
+    };
+    CTATLogicRelationNode.prototype.findExpression = function(expression, path) {
+      var ref, ref1;
+      return ((ref = (ref1 = this.left) != null ? ref1.findExpression(expression, path.concat(["left"])) : void 0) != null ? ref : []).concat(CTATLogicRelationNode.__super__.findExpression.call(this, expression, path), this.right.findExpression(expression, path.concat(["right"])));
+    };
+    CTATLogicRelationNode.prototype.findRule = function(rule, path, reverse) {
+      var ref, ref1;
+      if (reverse == null) {
+        reverse = false;
+      }
+      return ((ref = (ref1 = this.left) != null ? ref1.findRule(rule, path.concat(["left"]), reverse) : void 0) != null ? ref : []).concat(CTATLogicRelationNode.__super__.findRule.call(this, rule, path, reverse), this.right.findRule(rule, path.concat(["right"]), reverse));
+    };
+    CTATLogicRelationNode.prototype.applyRules = function(rules1, reverse, global) {
+      var ref, ref1, ref2;
+      this.rules = rules1;
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (global == null) {
+        global = false;
+      }
+      if (global) {
+        this.left = ((ref = this.left) != null ? (ref1 = ref.setSteps(this.steps)) != null ? ref1.applyRules(this.rules, reverse, true) : void 0 : void 0) || null;
+        this.right = this.right.setSteps(((ref2 = this.left) != null ? ref2.steps : void 0) || this.steps).applyRules(this.rules, reverse, true);
+        this.setSteps(this.right.steps);
+      }
+      return CTATLogicRelationNode.__super__.applyRules.apply(this, arguments);
+    };
+    CTATLogicRelationNode.prototype.truth = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.negationOp() && this.right.constant()) {
+        return test || this.right.clone().negate();
       } else {
-        if (this.junctionOp() && this.right.junctionOp() && this.operator === this.right.operator) {
-          return new CTATLogicRelationNode(this.operator, new CTATLogicRelationNode(this.operator, this.left, this.right.left), this.right.right);
+        return !test && this;
+      }
+    };
+    CTATLogicRelationNode.prototype.deMorgan = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.negationOp() && this.right.junctionOp()) {
+        return test || this.right.reverseNode();
+      } else {
+        return !test && this;
+      }
+    };
+    CTATLogicRelationNode.prototype.doubleNegation = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.negationOp() && this.right.negationOp()) {
+        return test || this.unnegateNode().unnegateNode();
+      } else {
+        return CTATLogicRelationNode.__super__.doubleNegation.apply(this, arguments);
+      }
+    };
+    CTATLogicRelationNode.prototype.negativeConjunction = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.negativeConjunctionOp()) {
+        return test || (new CTATLogicFlattenNode("AND", [this.left, this.right])).negateNode();
+      } else {
+        if (reverse && this.negationOp() && this.right.conjunctionOp() && this.right.terms.length === 2) {
+          return test || new CTATLogicRelationNode("NAND", this.right.terms[0], this.right.terms[1]);
         } else {
-          return this;
+          return !test && this;
         }
       }
     };
-    CTATLogicRelationNode.prototype.distributivity = function() {
-      var ref, ref1, ref2, ref3;
-      if (this.junctionOp() && this.left.junctionOp() && this.right.junctionOp() && (this.inverseOperator() === (ref = this.left.operator) && ref === this.right.operator) && this.left.left.equals(this.right.left)) {
-        return new CTATLogicRelationNode(this.inverseOperator(), this.left.left, new CTATLogicRelationNode(this.left.inverseOperator(), this.left.right, this.right.right));
+    CTATLogicRelationNode.prototype.negativeDisjunction = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.negativeDisjunctionOp()) {
+        return test || (new CTATLogicFlattenNode("OR", [this.left, this.right])).negateNode();
       } else {
-        if (this.junctionOp() && this.left.junctionOp() && this.right.junctionOp() && (this.inverseOperator() === (ref1 = this.left.operator) && ref1 === this.right.operator) && this.left.left.equals(this.right.right)) {
-          return new CTATLogicRelationNode(this.inverseOperator(), this.left.left, new CTATLogicRelationNode(this.left.inverseOperator(), this.left.right, this.right.left));
+        if (reverse && this.negationOp() && this.right.disjunctionOp() && this.right.terms.length === 2) {
+          return test || new CTATLogicRelationNode("NOR", this.right.terms[0], this.right.terms[1]);
         } else {
-          if (this.junctionOp() && this.left.junctionOp() && this.right.junctionOp() && (this.inverseOperator() === (ref2 = this.left.operator) && ref2 === this.right.operator) && this.left.right.equals(this.right.left)) {
-            return new CTATLogicRelationNode(this.inverseOperator(), new CTATLogicRelationNode(this.left.inverseOperator(), this.left.left, this.right.right), this.right.left);
-          } else {
-            if (this.junctionOp() && this.left.junctionOp() && this.right.junctionOp() && (this.inverseOperator() === (ref3 = this.left.operator) && ref3 === this.right.operator) && this.left.right.equals(this.right.right)) {
-              return new CTATLogicRelationNode(this.inverseOperator(), new CTATLogicRelationNode(this.left.inverseOperator(), this.left.left, this.right.left), this.right.right);
-            } else {
-              if (this.junctionOp() && this.left.junctionOp() && this.operator !== this.left.operator) {
-                return new CTATLogicRelationNode(this.inverseOperator(), new CTATLogicRelationNode(this.left.inverseOperator(), this.left.left, this.right), new CTATLogicRelationNode(this.left.inverseOperator(), this.left.right, this.right));
-              } else {
-                if (this.junctionOp() && this.right.junctionOp() && this.operator !== this.right.operator) {
-                  return new CTATLogicRelationNode(this.inverseOperator(), new CTATLogicRelationNode(this.right.inverseOperator(), this.left, this.right.left), new CTATLogicRelationNode(this.right.inverseOperator(), this.left, this.right.right));
-                } else {
-                  return this;
-                }
-              }
-            }
-          }
+          return !test && this;
         }
       }
     };
-    CTATLogicRelationNode.prototype.deMorgan = function() {
-      if (this.negationOp() && this.right.junctionOp()) {
-        return this.right.reverseNode();
+    CTATLogicRelationNode.prototype.implication = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.implicationOp()) {
+        return test || new CTATLogicFlattenNode("OR", [this.left.negateNode(), this.right]);
       } else {
-        if (this.junctionOp() && this.left.negationOp() && this.right.negationOp()) {
-          return this.reverseNode(true).negateNode();
-        } else {
-          return this;
-        }
+        return !test && this;
       }
     };
-    CTATLogicRelationNode.prototype.doubleNegation = function() {
-      if (this.negationOp() && this.right.negationOp()) {
-        return this.unnegateNode().unnegateNode();
+    CTATLogicRelationNode.prototype.biimplication = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.biimplicationOp()) {
+        return test || new CTATLogicFlattenNode("OR", [new CTATLogicFlattenNode("AND", [this.left, this.right]), new CTATLogicFlattenNode("AND", [this.left.negateNode(), this.right.negateNode()])]);
       } else {
-        return this.negateNode().negateNode();
+        return !test && this;
       }
     };
-    CTATLogicRelationNode.prototype.implication = function() {
-      if (this.implicationOp()) {
-        return new CTATLogicRelationNode("OR", this.left.negateNode(), this.right);
+    CTATLogicRelationNode.prototype.biimplicationToImplication = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.biimplicationOp()) {
+        return test || new CTATLogicFlattenNode("AND", [new CTATLogicRelationNode("IF", this.left, this.right), new CTATLogicRelationNode("IF", this.right, this.left)]);
       } else {
-        if (this.disjunctionOp() && this.left.negationOp()) {
-          return new CTATLogicRelationNode("IF", this.left.unnegateNode(), this.right);
-        } else {
-          if (this.disjunctionOp() && this.right.negationOp()) {
-            return new CTATLogicRelationNode("IF", this.right.unnegateNode(), this.left);
-          } else {
-            return this;
-          }
-        }
+        return !test && this;
       }
     };
-    CTATLogicRelationNode.prototype.biimplication = function() {
-      if (this.biimplicationOp()) {
-        return new CTATLogicRelationNode("OR", new CTATLogicRelationNode("AND", this.left, this.right), new CTATLogicRelationNode("AND", this.left.negateNode(), this.right.negateNode()));
+    CTATLogicRelationNode.prototype.exclusiveDisjunction = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.exclusiveDisjunctionOp()) {
+        return test || new CTATLogicFlattenNode("OR", [new CTATLogicFlattenNode("AND", [this.left, this.right.negateNode()]), new CTATLogicFlattenNode("AND", [this.left.negateNode(), this.right])]);
       } else {
-        if (this.disjunctionOp() && this.left.conjunctionOp() && this.right.conjunctionOp() && (this.left.left.inverse(this.right.left) && this.left.right.inverse(this.right.right) || this.left.left.inverse(this.right.right) && this.left.right.inverse(this.right.left))) {
-          if (this.left.left.negationOp() && this.left.right.negationOp()) {
-            return new CTATLogicRelationNode("IFF", this.left.left.unnegateNode(), this.left.right.unnegateNode());
-          } else {
-            return new CTATLogicRelationNode("IFF", this.left.left, this.left.right);
-          }
-        } else {
-          return this;
-        }
+        return !test && this;
       }
     };
-    CTATLogicRelationNode.prototype.biimplicationToImplication = function() {
-      if (this.biimplicationOp()) {
-        return new CTATLogicRelationNode("AND", new CTATLogicRelationNode("IF", this.left, this.right), new CTATLogicRelationNode("IF", this.right, this.left));
+    CTATLogicRelationNode.prototype.exclusiveDisjunctionToImplication = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.exclusiveDisjunctionOp()) {
+        return test || new CTATLogicFlattenNode("AND", [new CTATLogicRelationNode("IF", this.left, this.right.negateNode()), new CTATLogicRelationNode("IF", this.right.negateNode(), this.left)]);
       } else {
-        if (this.conjunctionOp() && this.left.implicationOp() && this.right.implicationOp() && this.left.left.equals(this.right.right) && this.left.right.equals(this.right.left)) {
-          return new CTATLogicRelationNode("IFF", this.left.left, this.left.right);
-        } else {
-          return this;
-        }
+        return !test && this;
       }
-    };
-    CTATLogicRelationNode.prototype.exclusiveDisjunction = function() {
-      if (this.exclusiveDisjunctionOp()) {
-        return new CTATLogicRelationNode("OR", new CTATLogicRelationNode("AND", this.left, this.right.negateNode()), new CTATLogicRelationNode("AND", this.left.negateNode(), this.right));
-      } else {
-        if (this.disjunctionOp() && this.left.conjunctionOp() && this.right.conjunctionOp() && (this.left.left.inverse(this.right.left) && this.left.right.inverse(this.right.right) || this.left.left.inverse(this.right.right) && this.left.right.inverse(this.right.left))) {
-          if (this.left.left.negationOp()) {
-            return new CTATLogicRelationNode("XOR", this.left.left.unnegateNode(), this.left.right);
-          } else {
-            return new CTATLogicRelationNode("XOR", this.left.left, this.left.right.unnegateNode());
-          }
-        } else {
-          return this;
-        }
-      }
-    };
-    CTATLogicRelationNode.prototype.exclusiveDisjunctionToImplication = function() {
-      if (this.exclusiveDisjunctionOp()) {
-        return new CTATLogicRelationNode("AND", new CTATLogicRelationNode("IF", this.left, this.right.negateNode()), new CTATLogicRelationNode("IF", this.right.negateNode(), this.left));
-      } else {
-        if (this.conjunctionOp() && this.left.implicationOp() && this.right.implicationOp() && this.left.left.equals(this.right.right) && this.left.right.equals(this.right.left)) {
-          if (this.left.left.negationOp()) {
-            return new CTATLogicRelationNode("XOR", this.left.left.unnegateNode(), this.left.right);
-          } else {
-            if (this.left.right.negationOp()) {
-              return new CTATLogicRelationNode("XOR", this.left.left, this.left.right.unnegateNode());
-            } else {
-              return this;
-            }
-          }
-        } else {
-          return this;
-        }
-      }
-    };
-    CTATLogicRelationNode.prototype.disjunction = function() {
-      if (this.disjunctionOp() && this.left.inverse(this.right)) {
-        return new CTATLogicConstantNode(true);
-      } else {
-        if (this.disjunctionOp() && this.left.constant(true)) {
-          return this.left;
-        } else {
-          if (this.disjunctionOp() && this.right.constant(true)) {
-            return this.right;
-          } else {
-            if (this.disjunctionOp() && this.left.equals(this.right)) {
-              return this.left;
-            } else {
-              if (this.disjunctionOp() && (this.left.conjunctionOp() && (this.left.left.equals(this.right) || this.left.right.equals(this.right)) || this.left.constant(false))) {
-                return this.right;
-              } else {
-                if (this.disjunctionOp() && (this.right.conjunctionOp() && (this.left.equals(this.right.left) || this.left.equals(this.right.right)) || this.right.constant(false))) {
-                  return this.left;
-                } else {
-                  return CTATLogicRelationNode.__super__.disjunction.apply(this, arguments);
-                }
-              }
-            }
-          }
-        }
-      }
-    };
-    CTATLogicRelationNode.prototype.conjunction = function() {
-      if (this.conjunctionOp() && this.left.inverse(this.right)) {
-        return new CTATLogicConstantNode(false);
-      } else {
-        if (this.conjunctionOp() && this.left.constant(false)) {
-          return this.left;
-        } else {
-          if (this.conjunctionOp() && this.right.constant(false)) {
-            return this.right;
-          } else {
-            if (this.conjunctionOp() && this.left.equals(this.right)) {
-              return this.left;
-            } else {
-              if (this.conjunctionOp() && (this.left.disjunctionOp() && (this.left.left.equals(this.right) || this.left.right.equals(this.right)) || this.left.constant(true))) {
-                return this.right;
-              } else {
-                if (this.conjunctionOp() && (this.right.disjunctionOp() && (this.left.equals(this.right.left) || this.left.equals(this.right.right)) || this.right.constant(true))) {
-                  return this.left;
-                } else {
-                  return CTATLogicRelationNode.__super__.conjunction.apply(this, arguments);
-                }
-              }
-            }
-          }
-        }
-      }
-    };
-    CTATLogicRelationNode.prototype.reverseNode = function(remove) {
-      if (remove == null) {
-        remove = false;
-      }
-      return new CTATLogicRelationNode(this.inverseOperator(), remove ? this.left.unnegateNode() : this.left.negateNode(), remove ? this.right.unnegateNode() : this.right.negateNode());
     };
     CTATLogicRelationNode.prototype.replaceNodes = function() {
-      var methods;
+      var left, node, right, rules;
+      rules = CTATLogicTreeNode.diff(this.rules, ["replaceNodes"]);
       switch(this.operator) {
         case "NOT":
-          return this.right.negate();
-        case "AND":
+          return this.right.setSteps(this.steps).negate();
+        case "NAND":
         ;
-        case "OR":
-          return new CTATLogicFlattenNode(this.operator, [this.left, this.right]);
+        case "NOR":
+          return (new CTATLogicFlattenNode(this.unnegateOperator(), [this.left, this.right])).setSteps(++this.steps).negate().applyRules(rules);
         case "IF":
-          return new CTATLogicFlattenNode("OR", [this.left.negate(), this.right]);
-        case "XOR":
-          methods = CTATLogicTreeNode.diff(this.methods, ["replaceNodes"]);
-          return new CTATLogicFlattenNode("OR", [(new CTATLogicFlattenNode("AND", [this.left, this.right.clone().negate()])).simplifyNode(methods), (new CTATLogicFlattenNode("AND", [this.left.clone().negate(), this.right])).simplifyNode(methods)]);
+          return (new CTATLogicFlattenNode("OR", [left = this.left.setSteps(this.steps).negate().applyRules(rules), this.right])).setSteps(++left.steps);
         case "IFF":
-          methods = CTATLogicTreeNode.diff(this.methods, ["replaceNodes"]);
-          return new CTATLogicFlattenNode("OR", [(new CTATLogicFlattenNode("AND", [this.left, this.right])).simplifyNode(methods), new CTATLogicFlattenNode("AND", [this.left.clone().negate(), this.right.clone().negate().simplifyNode(methods)])]);
+          node = new CTATLogicFlattenNode("OR", [new CTATLogicFlattenNode("AND", [this.left, this.right]), new CTATLogicFlattenNode("AND", [left = this.left.clone().setSteps(this.steps).negate().applyRules(rules), right = this.right.clone().setSteps(left.steps).negate().applyRules(rules)])]);
+          node.setSteps(right.steps).terms = node.terms.map(function(_this) {
+            return function(term) {
+              term = term.setSteps(node.steps).applyRules(rules);
+              node.setSteps(term.steps);
+              return term;
+            };
+          }(this));
+          return node.setSteps(++node.steps);
+        case "XOR":
+          node = new CTATLogicFlattenNode("OR", [new CTATLogicFlattenNode("AND", [this.left, right = this.right.clone().setSteps(this.steps).negate().applyRules(rules)]), new CTATLogicFlattenNode("AND", [left = this.left.clone().setSteps(right.steps).negate().applyRules(rules), this.right])]);
+          node.setSteps(left.steps).terms = node.terms.map(function(_this) {
+            return function(term) {
+              term = term.setSteps(node.steps).applyRules(rules);
+              node.setSteps(term.steps);
+              return term;
+            };
+          }(this));
+          return node.setSteps(++node.steps);
+      }
+    };
+    CTATLogicRelationNode.prototype.sort = function() {
+      var ref, ref1;
+      if (((ref = this.operator) === "NAND" || ref === "NOR" || ref === "IFF" || ref === "XOR") && this.left.compare(this.right) > 0) {
+        ref1 = [this.right, this.left], this.left = ref1[0], this.right = ref1[1];
+      }
+      return this;
+    };
+    CTATLogicRelationNode.prototype.compare = function(node) {
+      return CTATLogicRelationNode.__super__.compare.apply(this, arguments) || (this.operator === "NOT" ? this.right.compare(node) : node.operator === "NOT" ? this.compare(node.right) : this.left.compare(node.left) || this.right.compare(node.right)) || this.compareNegations(node);
+    };
+    CTATLogicRelationNode.prototype.precedence = function(sort) {
+      if (sort == null) {
+        sort = false;
+      }
+      if (sort && this.operator === "NOT") {
+        return this.right.precedence();
+      } else {
+        return CTATLogicRelationNode.__super__.precedence.apply(this, arguments);
       }
     };
     CTATLogicRelationNode.prototype.countVariables = function() {
@@ -21835,7 +22492,11 @@ goog.require("CTATLogicTreeNode");
     };
     CTATLogicRelationNode.prototype.countLevels = function() {
       var ref;
-      return 1 + Math.max((ref = this.left) != null ? ref.countLevels() : void 0, this.right.countLevels());
+      if (this.operator === "NOT") {
+        return this.right.countLevels();
+      } else {
+        return 1 + Math.max((ref = this.left) != null ? ref.countLevels() : void 0, this.right.countLevels());
+      }
     };
     return CTATLogicRelationNode;
   }(CTATLogicTreeNode);
@@ -21864,31 +22525,51 @@ goog.require("CTATLogicTreeNode");
   }, hasProp = {}.hasOwnProperty;
   CTATLogicVariableNode = function(superClass) {
     extend(CTATLogicVariableNode, superClass);
-    function CTATLogicVariableNode(variableTable, variable, parens, negated) {
+    function CTATLogicVariableNode(variableTable, variable, negated) {
       this.variableTable = variableTable;
       this.variable = variable;
-      this.parens = parens != null ? parens : 0;
       this.negated = negated != null ? negated : false;
       this.operator = "VAR";
     }
     CTATLogicVariableNode.prototype.clone = function() {
-      return new CTATLogicVariableNode(this.variableTable, this.variable, this.parens, this.negated);
+      return new CTATLogicVariableNode(this.variableTable, this.variable, this.negated);
     };
-    CTATLogicVariableNode.prototype.toString = function() {
-      return CTATLogicVariableNode.__super__.toString.call(this, this.variable);
+    CTATLogicVariableNode.prototype.toString = function(parenthesized, node, other) {
+      if (parenthesized == null) {
+        parenthesized = false;
+      }
+      if (node == null) {
+        node = null;
+      }
+      if (other == null) {
+        other = false;
+      }
+      return CTATLogicVariableNode.__super__.toString.call(this, this.variable, parenthesized, node, other);
     };
-    CTATLogicVariableNode.prototype.evaluate = function() {
-      var ref;
-      return CTATLogicVariableNode.__super__.evaluate.call(this, ((ref = this.variableTable) != null ? ref.get(this.variable) : void 0) || function() {
-        try {
-          return eval(this.variable);
-        } catch (_error) {
-          return null;
+    CTATLogicVariableNode.prototype.evaluate = function(bindings) {
+      if (bindings == null) {
+        bindings = null;
+      }
+      return CTATLogicVariableNode.__super__.evaluate.call(this, function() {
+        if (bindings != null) {
+          return (typeof bindings.get === "function" ? bindings.get(this.variable) : void 0) || bindings[this.variable];
+        } else {
+          if (this.variableTable != null) {
+            return this.variableTable.get(this.variable);
+          } else {
+            try {
+              return eval(this.variable);
+            } catch (_error) {
+            }
+          }
         }
       }.call(this));
     };
     CTATLogicVariableNode.prototype.equals = function(node, inverse) {
       return CTATLogicVariableNode.__super__.equals.call(this, node, inverse) && this.variable === node.variable;
+    };
+    CTATLogicVariableNode.prototype.getVariables = function() {
+      return [this.variable];
     };
     CTATLogicVariableNode.prototype.compare = function(node) {
       return CTATLogicVariableNode.__super__.compare.apply(this, arguments) || this.variable > node.variable && 1 || this.variable < node.variable && -1 || this.compareNegations(node);
@@ -21923,34 +22604,62 @@ goog.require("CTATLogicTreeNode");
   }, hasProp = {}.hasOwnProperty;
   CTATLogicConstantNode = function(superClass) {
     extend(CTATLogicConstantNode, superClass);
-    function CTATLogicConstantNode(value1, string, parens, negated) {
+    function CTATLogicConstantNode(value1, string, negated) {
       this.value = value1;
       this.string = string != null ? string : null;
-      this.parens = parens != null ? parens : 0;
       this.negated = negated != null ? negated : false;
       this.operator = "CONST";
       CTATLogicConstantNode.__super__.constructor.call(this, this.value);
     }
     CTATLogicConstantNode.prototype.clone = function() {
-      return new CTATLogicConstantNode(this.value, this.string, this.parens, this.negated);
+      return new CTATLogicConstantNode(this.value, this.string, this.negated);
     };
-    CTATLogicConstantNode.prototype.toString = function() {
-      return CTATLogicConstantNode.__super__.toString.call(this, this.string);
+    CTATLogicConstantNode.prototype.toString = function(parenthesized, node, other) {
+      if (parenthesized == null) {
+        parenthesized = false;
+      }
+      if (node == null) {
+        node = null;
+      }
+      if (other == null) {
+        other = false;
+      }
+      return CTATLogicConstantNode.__super__.toString.call(this, this.string, parenthesized, node, other);
     };
-    CTATLogicConstantNode.prototype.evaluate = function() {
+    CTATLogicConstantNode.prototype.evaluate = function(bindings) {
+      if (bindings == null) {
+        bindings = null;
+      }
       return CTATLogicConstantNode.__super__.evaluate.call(this, this.value);
     };
     CTATLogicConstantNode.prototype.equals = function(node, inverse) {
       return CTATLogicConstantNode.__super__.equals.call(this, node, inverse) && inverse !== (this.value === node.value);
+    };
+    CTATLogicConstantNode.prototype.truth = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (reverse) {
+        return test || this.negateNode();
+      } else {
+        return !test && this;
+      }
     };
     CTATLogicConstantNode.prototype.compare = function(node) {
       return CTATLogicConstantNode.__super__.compare.apply(this, arguments) || this.value - node.value;
     };
     CTATLogicConstantNode.prototype.negate = function() {
       this.value = !this.value;
+      this.string = CTATLogicTreeNode.toOperatorString(this.value);
       return this;
     };
     CTATLogicConstantNode.prototype.constant = function(value) {
+      if (value == null) {
+        value = null;
+      }
       return value == null || this.value === value;
     };
     return CTATLogicConstantNode;
@@ -21971,51 +22680,3342 @@ var CTATLogicGrammar = function() {
     for (o = o || {}, l = k.length;l--;o[k[l]] = v) {
     }
     return o;
-  }, $V0 = [1, 3], $V1 = [1, 5], $V2 = [1, 6], $V3 = [1, 7], $V4 = [1, 8], $V5 = [1, 10], $V6 = [1, 11], $V7 = [1, 12], $V8 = [1, 13], $V9 = [1, 14], $Va = [5, 6, 7, 8, 9, 10, 14];
+  }, $V0 = [1, 3], $V1 = [1, 5], $V2 = [1, 6], $V3 = [1, 7], $V4 = [1, 8], $V5 = [1, 10], $V6 = [1, 11], $V7 = [1, 12], $V8 = [1, 13], $V9 = [1, 14], $Va = [1, 15], $Vb = [1, 16], $Vc = [5, 6, 7, 8, 9, 10, 11, 12, 16], $Vd = [5, 7, 9, 10, 11, 12, 16];
   var parser = {trace:function trace() {
-  }, yy:{}, symbols_:{"error":2, "expression":3, "logical":4, "EOF":5, "AND":6, "OR":7, "XOR":8, "IF":9, "IFF":10, "NOT":11, "atom":12, "LPAREN":13, "RPAREN":14, "VARIABLE":15, "TRUE":16, "FALSE":17, "$accept":0, "$end":1}, terminals_:{2:"error", 5:"EOF", 6:"AND", 7:"OR", 8:"XOR", 9:"IF", 10:"IFF", 11:"NOT", 13:"LPAREN", 14:"RPAREN", 15:"VARIABLE", 16:"TRUE", 17:"FALSE"}, productions_:[0, [3, 2], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 2], [4, 1], [12, 3], [12, 1], [12, 1], [12, 1]], performAction:function anonymous(yytext, 
-  yyleng, yylineno, yy, yystate, $$, _$) {
+  }, yy:{}, symbols_:{"error":2, "expression":3, "logical":4, "EOF":5, "AND":6, "OR":7, "NAND":8, "NOR":9, "XOR":10, "IF":11, "IFF":12, "NOT":13, "atom":14, "LPAREN":15, "RPAREN":16, "VARIABLE":17, "TRUE":18, "FALSE":19, "$accept":0, "$end":1}, terminals_:{2:"error", 5:"EOF", 6:"AND", 7:"OR", 8:"NAND", 9:"NOR", 10:"XOR", 11:"IF", 12:"IFF", 13:"NOT", 15:"LPAREN", 16:"RPAREN", 17:"VARIABLE", 18:"TRUE", 19:"FALSE"}, productions_:[0, [3, 2], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 
+  2], [4, 1], [14, 3], [14, 1], [14, 1], [14, 1]], performAction:function anonymous(yytext, yyleng, yylineno, yy, yystate, $$, _$) {
     var $0 = $$.length - 1;
     switch(yystate) {
       case 1:
         return $$[$0 - 1];
         break;
       case 2:
-        this.$ = new yy.CTATLogicRelationNode("AND", $$[$0 - 2], $$[$0], $$[$0 - 1]);
+        yy.parser.checkStrict($$[$0 - 2], _$[$0 - 2], yy.lexer.matched);
+        yy.parser.checkStrict($$[$0], _$[$0], yy.lexer.matched);
+        this.$ = $$[$0 - 2].addOperand("AND", $$[$0], $$[$0 - 1]);
         break;
       case 3:
-        this.$ = new yy.CTATLogicRelationNode("OR", $$[$0 - 2], $$[$0], $$[$0 - 1]);
+        yy.parser.checkStrict($$[$0 - 2], _$[$0 - 2], yy.lexer.matched);
+        yy.parser.checkStrict($$[$0], _$[$0], yy.lexer.matched);
+        this.$ = $$[$0 - 2].addOperand("OR", $$[$0], $$[$0 - 1]);
         break;
       case 4:
-        this.$ = new yy.CTATLogicRelationNode("XOR", $$[$0 - 2], $$[$0], $$[$0 - 1]);
+        yy.parser.checkStrict($$[$0 - 2], _$[$0 - 2], yy.lexer.matched);
+        yy.parser.checkStrict($$[$0], _$[$0], yy.lexer.matched);
+        this.$ = new yy.CTATLogicRelationNode("NAND", $$[$0 - 2], $$[$0], $$[$0 - 1]);
         break;
       case 5:
-        this.$ = new yy.CTATLogicRelationNode("IF", $$[$0 - 2], $$[$0], $$[$0 - 1]);
+        yy.parser.checkStrict($$[$0 - 2], _$[$0 - 2], yy.lexer.matched);
+        yy.parser.checkStrict($$[$0], _$[$0], yy.lexer.matched);
+        this.$ = new yy.CTATLogicRelationNode("NOR", $$[$0 - 2], $$[$0], $$[$0 - 1]);
         break;
       case 6:
-        this.$ = new yy.CTATLogicRelationNode("IFF", $$[$0 - 2], $$[$0], $$[$0 - 1]);
+        yy.parser.checkStrict($$[$0 - 2], _$[$0 - 2], yy.lexer.matched);
+        yy.parser.checkStrict($$[$0], _$[$0], yy.lexer.matched);
+        this.$ = new yy.CTATLogicRelationNode("XOR", $$[$0 - 2], $$[$0], $$[$0 - 1]);
         break;
       case 7:
-        this.$ = new yy.CTATLogicRelationNode("NOT", null, $$[$0], $$[$0 - 1]);
+        yy.parser.checkStrict($$[$0 - 2], _$[$0 - 2], yy.lexer.matched);
+        yy.parser.checkStrict($$[$0], _$[$0], yy.lexer.matched);
+        this.$ = new yy.CTATLogicRelationNode("IF", $$[$0 - 2], $$[$0], $$[$0 - 1]);
         break;
       case 8:
+        yy.parser.checkStrict($$[$0 - 2], _$[$0 - 2], yy.lexer.matched);
+        yy.parser.checkStrict($$[$0], _$[$0], yy.lexer.matched);
+        this.$ = new yy.CTATLogicRelationNode("IFF", $$[$0 - 2], $$[$0], $$[$0 - 1]);
+        break;
+      case 9:
+        yy.parser.checkStrict($$[$0], _$[$0], yy.lexer.matched);
+        this.$ = new yy.CTATLogicRelationNode("NOT", null, $$[$0], $$[$0 - 1]);
+        break;
+      case 10:
+        this.$ = $$[$0];
+        break;
+      case 11:
+        this.$ = $$[$0 - 1].setParens();
+        break;
+      case 12:
+        this.$ = new yy.CTATLogicVariableNode(yy.variableTable, $$[$0]);
+        break;
+      case 13:
+        this.$ = new yy.CTATLogicConstantNode(true, $$[$0]);
+        break;
+      case 14:
+        this.$ = new yy.CTATLogicConstantNode(false, $$[$0]);
+        break;
+    }
+  }, table:[{3:1, 4:2, 13:$V0, 14:4, 15:$V1, 17:$V2, 18:$V3, 19:$V4}, {1:[3]}, {5:[1, 9], 6:$V5, 7:$V6, 8:$V7, 9:$V8, 10:$V9, 11:$Va, 12:$Vb}, {4:17, 13:$V0, 14:4, 15:$V1, 17:$V2, 18:$V3, 19:$V4}, o($Vc, [2, 10]), {4:18, 13:$V0, 14:4, 15:$V1, 17:$V2, 18:$V3, 19:$V4}, o($Vc, [2, 12]), o($Vc, [2, 13]), o($Vc, [2, 14]), {1:[2, 1]}, {4:19, 13:$V0, 14:4, 15:$V1, 17:$V2, 18:$V3, 19:$V4}, {4:20, 13:$V0, 14:4, 15:$V1, 17:$V2, 18:$V3, 19:$V4}, {4:21, 13:$V0, 14:4, 15:$V1, 17:$V2, 18:$V3, 19:$V4}, {4:22, 13:$V0, 
+  14:4, 15:$V1, 17:$V2, 18:$V3, 19:$V4}, {4:23, 13:$V0, 14:4, 15:$V1, 17:$V2, 18:$V3, 19:$V4}, {4:24, 13:$V0, 14:4, 15:$V1, 17:$V2, 18:$V3, 19:$V4}, {4:25, 13:$V0, 14:4, 15:$V1, 17:$V2, 18:$V3, 19:$V4}, o($Vc, [2, 9]), {6:$V5, 7:$V6, 8:$V7, 9:$V8, 10:$V9, 11:$Va, 12:$Vb, 16:[1, 26]}, o($Vc, [2, 2]), o($Vd, [2, 3], {6:$V5, 8:$V7}), o($Vd, [2, 4], {6:$V5}), o([5, 10, 11, 12, 16], [2, 5], {6:$V5, 7:$V6, 8:$V7}), o([5, 11, 12, 16], [2, 6], {6:$V5, 7:$V6, 8:$V7, 9:$V8, 10:$V9}), o([5, 12, 16], [2, 7], 
+  {6:$V5, 7:$V6, 8:$V7, 9:$V8, 10:$V9, 11:$Va}), o([5, 16], [2, 8], {6:$V5, 7:$V6, 8:$V7, 9:$V8, 10:$V9, 11:$Va, 12:$Vb}), o($Vc, [2, 11])], defaultActions:{9:[2, 1]}, parseError:function parseError(str, hash) {
+    if (hash.recoverable) {
+      this.trace(str);
+    } else {
+      var error = new Error(str);
+      error.hash = hash;
+      throw error;
+    }
+  }, parse:function parse(input) {
+    var self = this, stack = [0], tstack = [], vstack = [null], lstack = [], table = this.table, yytext = "", yylineno = 0, yyleng = 0, recovering = 0, TERROR = 2, EOF = 1;
+    var args = lstack.slice.call(arguments, 1);
+    var lexer = Object.create(this.lexer);
+    var sharedState = {yy:{}};
+    for (var k in this.yy) {
+      if (Object.prototype.hasOwnProperty.call(this.yy, k)) {
+        sharedState.yy[k] = this.yy[k];
+      }
+    }
+    lexer.setInput(input, sharedState.yy);
+    sharedState.yy.lexer = lexer;
+    sharedState.yy.parser = this;
+    if (typeof lexer.yylloc == "undefined") {
+      lexer.yylloc = {};
+    }
+    var yyloc = lexer.yylloc;
+    lstack.push(yyloc);
+    var ranges = lexer.options && lexer.options.ranges;
+    if (typeof sharedState.yy.parseError === "function") {
+      this.parseError = sharedState.yy.parseError;
+    } else {
+      this.parseError = Object.getPrototypeOf(this).parseError;
+    }
+    function popStack(n) {
+      stack.length = stack.length - 2 * n;
+      vstack.length = vstack.length - n;
+      lstack.length = lstack.length - n;
+    }
+    _token_stack: var lex = function() {
+      var token;
+      token = lexer.lex() || EOF;
+      if (typeof token !== "number") {
+        token = self.symbols_[token] || token;
+      }
+      return token;
+    };
+    var symbol, preErrorSymbol, state, action, a, r, yyval = {}, p, len, newState, expected;
+    while (true) {
+      state = stack[stack.length - 1];
+      if (this.defaultActions[state]) {
+        action = this.defaultActions[state];
+      } else {
+        if (symbol === null || typeof symbol == "undefined") {
+          symbol = lex();
+        }
+        action = table[state] && table[state][symbol];
+      }
+      if (typeof action === "undefined" || !action.length || !action[0]) {
+        var errStr = "";
+        expected = [];
+        for (p in table[state]) {
+          if (this.terminals_[p] && p > TERROR) {
+            expected.push("'" + this.terminals_[p] + "'");
+          }
+        }
+        if (lexer.showPosition) {
+          errStr = "Parse error on line " + (yylineno + 1) + ":\n" + lexer.showPosition() + "\nExpecting " + expected.join(", ") + ", got '" + (this.terminals_[symbol] || symbol) + "'";
+        } else {
+          errStr = "Parse error on line " + (yylineno + 1) + ": Unexpected " + (symbol == EOF ? "end of input" : "'" + (this.terminals_[symbol] || symbol) + "'");
+        }
+        this.parseError(errStr, {text:lexer.match, token:this.terminals_[symbol] || symbol, line:lexer.yylineno, loc:yyloc, expected:expected});
+      }
+      if (action[0] instanceof Array && action.length > 1) {
+        throw new Error("Parse Error: multiple actions possible at state: " + state + ", token: " + symbol);
+      }
+      switch(action[0]) {
+        case 1:
+          stack.push(symbol);
+          vstack.push(lexer.yytext);
+          lstack.push(lexer.yylloc);
+          stack.push(action[1]);
+          symbol = null;
+          if (!preErrorSymbol) {
+            yyleng = lexer.yyleng;
+            yytext = lexer.yytext;
+            yylineno = lexer.yylineno;
+            yyloc = lexer.yylloc;
+            if (recovering > 0) {
+              recovering--;
+            }
+          } else {
+            symbol = preErrorSymbol;
+            preErrorSymbol = null;
+          }
+          break;
+        case 2:
+          len = this.productions_[action[1]][1];
+          yyval.$ = vstack[vstack.length - len];
+          yyval._$ = {first_line:lstack[lstack.length - (len || 1)].first_line, last_line:lstack[lstack.length - 1].last_line, first_column:lstack[lstack.length - (len || 1)].first_column, last_column:lstack[lstack.length - 1].last_column};
+          if (ranges) {
+            yyval._$.range = [lstack[lstack.length - (len || 1)].range[0], lstack[lstack.length - 1].range[1]];
+          }
+          r = this.performAction.apply(yyval, [yytext, yyleng, yylineno, sharedState.yy, action[1], vstack, lstack].concat(args));
+          if (typeof r !== "undefined") {
+            return r;
+          }
+          if (len) {
+            stack = stack.slice(0, -1 * len * 2);
+            vstack = vstack.slice(0, -1 * len);
+            lstack = lstack.slice(0, -1 * len);
+          }
+          stack.push(this.productions_[action[1]][0]);
+          vstack.push(yyval.$);
+          lstack.push(yyval._$);
+          newState = table[stack[stack.length - 2]][stack[stack.length - 1]];
+          stack.push(newState);
+          break;
+        case 3:
+          return true;
+      }
+    }
+    return true;
+  }};
+  parser.checkStrict = function checkStrict(node, location, matched) {
+    var position = matched + "\n" + "-".repeat(location.first_column) + "^";
+    var expected = ["'LPAREN'", "'VARIABLE'", "'TRUE'", "'FALSE'"];
+    var error = "Parse error on line " + location.first_line + ":\n" + position + "\nExpecting " + expected.join(", ") + " got '" + matched[location.first_column] + "'";
+    if (this.yy.strictMode && !node.checkParens()) {
+      this.parseError(error, {text:matched, token:node.operator, line:location.first_line, loc:location, expected:expected});
+    }
+  };
+  var lexer = function() {
+    var lexer = {EOF:1, parseError:function parseError(str, hash) {
+      if (this.yy.parser) {
+        this.yy.parser.parseError(str, hash);
+      } else {
+        throw new Error(str);
+      }
+    }, setInput:function(input, yy) {
+      this.yy = yy || this.yy || {};
+      this._input = input;
+      this._more = this._backtrack = this.done = false;
+      this.yylineno = this.yyleng = 0;
+      this.yytext = this.matched = this.match = "";
+      this.conditionStack = ["INITIAL"];
+      this.yylloc = {first_line:1, first_column:0, last_line:1, last_column:0};
+      if (this.options.ranges) {
+        this.yylloc.range = [0, 0];
+      }
+      this.offset = 0;
+      return this;
+    }, input:function() {
+      var ch = this._input[0];
+      this.yytext += ch;
+      this.yyleng++;
+      this.offset++;
+      this.match += ch;
+      this.matched += ch;
+      var lines = ch.match(/(?:\r\n?|\n).*/g);
+      if (lines) {
+        this.yylineno++;
+        this.yylloc.last_line++;
+      } else {
+        this.yylloc.last_column++;
+      }
+      if (this.options.ranges) {
+        this.yylloc.range[1]++;
+      }
+      this._input = this._input.slice(1);
+      return ch;
+    }, unput:function(ch) {
+      var len = ch.length;
+      var lines = ch.split(/(?:\r\n?|\n)/g);
+      this._input = ch + this._input;
+      this.yytext = this.yytext.substr(0, this.yytext.length - len);
+      this.offset -= len;
+      var oldLines = this.match.split(/(?:\r\n?|\n)/g);
+      this.match = this.match.substr(0, this.match.length - 1);
+      this.matched = this.matched.substr(0, this.matched.length - 1);
+      if (lines.length - 1) {
+        this.yylineno -= lines.length - 1;
+      }
+      var r = this.yylloc.range;
+      this.yylloc = {first_line:this.yylloc.first_line, last_line:this.yylineno + 1, first_column:this.yylloc.first_column, last_column:lines ? (lines.length === oldLines.length ? this.yylloc.first_column : 0) + oldLines[oldLines.length - lines.length].length - lines[0].length : this.yylloc.first_column - len};
+      if (this.options.ranges) {
+        this.yylloc.range = [r[0], r[0] + this.yyleng - len];
+      }
+      this.yyleng = this.yytext.length;
+      return this;
+    }, more:function() {
+      this._more = true;
+      return this;
+    }, reject:function() {
+      if (this.options.backtrack_lexer) {
+        this._backtrack = true;
+      } else {
+        return this.parseError("Lexical error on line " + (this.yylineno + 1) + ". You can only invoke reject() in the lexer when the lexer is of the backtracking persuasion (options.backtrack_lexer = true).\n" + this.showPosition(), {text:"", token:null, line:this.yylineno});
+      }
+      return this;
+    }, less:function(n) {
+      this.unput(this.match.slice(n));
+    }, pastInput:function() {
+      var past = this.matched.substr(0, this.matched.length - this.match.length);
+      return (past.length > 20 ? "..." : "") + past.substr(-20).replace(/\n/g, "");
+    }, upcomingInput:function() {
+      var next = this.match;
+      if (next.length < 20) {
+        next += this._input.substr(0, 20 - next.length);
+      }
+      return (next.substr(0, 20) + (next.length > 20 ? "..." : "")).replace(/\n/g, "");
+    }, showPosition:function() {
+      var pre = this.pastInput();
+      var c = (new Array(pre.length + 1)).join("-");
+      return pre + this.upcomingInput() + "\n" + c + "^";
+    }, test_match:function(match, indexed_rule) {
+      var token, lines, backup;
+      if (this.options.backtrack_lexer) {
+        backup = {yylineno:this.yylineno, yylloc:{first_line:this.yylloc.first_line, last_line:this.last_line, first_column:this.yylloc.first_column, last_column:this.yylloc.last_column}, yytext:this.yytext, match:this.match, matches:this.matches, matched:this.matched, yyleng:this.yyleng, offset:this.offset, _more:this._more, _input:this._input, yy:this.yy, conditionStack:this.conditionStack.slice(0), done:this.done};
+        if (this.options.ranges) {
+          backup.yylloc.range = this.yylloc.range.slice(0);
+        }
+      }
+      lines = match[0].match(/(?:\r\n?|\n).*/g);
+      if (lines) {
+        this.yylineno += lines.length;
+      }
+      this.yylloc = {first_line:this.yylloc.last_line, last_line:this.yylineno + 1, first_column:this.yylloc.last_column, last_column:lines ? lines[lines.length - 1].length - lines[lines.length - 1].match(/\r?\n?/)[0].length : this.yylloc.last_column + match[0].length};
+      this.yytext += match[0];
+      this.match += match[0];
+      this.matches = match;
+      this.yyleng = this.yytext.length;
+      if (this.options.ranges) {
+        this.yylloc.range = [this.offset, this.offset += this.yyleng];
+      }
+      this._more = false;
+      this._backtrack = false;
+      this._input = this._input.slice(match[0].length);
+      this.matched += match[0];
+      token = this.performAction.call(this, this.yy, this, indexed_rule, this.conditionStack[this.conditionStack.length - 1]);
+      if (this.done && this._input) {
+        this.done = false;
+      }
+      if (token) {
+        return token;
+      } else {
+        if (this._backtrack) {
+          for (var k in backup) {
+            this[k] = backup[k];
+          }
+          return false;
+        }
+      }
+      return false;
+    }, next:function() {
+      if (this.done) {
+        return this.EOF;
+      }
+      if (!this._input) {
+        this.done = true;
+      }
+      var token, match, tempMatch, index;
+      if (!this._more) {
+        this.yytext = "";
+        this.match = "";
+      }
+      var rules = this._currentRules();
+      for (var i = 0;i < rules.length;i++) {
+        tempMatch = this._input.match(this.rules[rules[i]]);
+        if (tempMatch && (!match || tempMatch[0].length > match[0].length)) {
+          match = tempMatch;
+          index = i;
+          if (this.options.backtrack_lexer) {
+            token = this.test_match(tempMatch, rules[i]);
+            if (token !== false) {
+              return token;
+            } else {
+              if (this._backtrack) {
+                match = false;
+                continue;
+              } else {
+                return false;
+              }
+            }
+          } else {
+            if (!this.options.flex) {
+              break;
+            }
+          }
+        }
+      }
+      if (match) {
+        token = this.test_match(match, rules[index]);
+        if (token !== false) {
+          return token;
+        }
+        return false;
+      }
+      if (this._input === "") {
+        return this.EOF;
+      } else {
+        return this.parseError("Lexical error on line " + (this.yylineno + 1) + ". Unrecognized text.\n" + this.showPosition(), {text:"", token:null, line:this.yylineno});
+      }
+    }, lex:function lex() {
+      var r = this.next();
+      if (r) {
+        return r;
+      } else {
+        return this.lex();
+      }
+    }, begin:function begin(condition) {
+      this.conditionStack.push(condition);
+    }, popState:function popState() {
+      var n = this.conditionStack.length - 1;
+      if (n > 0) {
+        return this.conditionStack.pop();
+      } else {
+        return this.conditionStack[0];
+      }
+    }, _currentRules:function _currentRules() {
+      if (this.conditionStack.length && this.conditionStack[this.conditionStack.length - 1]) {
+        return this.conditions[this.conditionStack[this.conditionStack.length - 1]].rules;
+      } else {
+        return this.conditions["INITIAL"].rules;
+      }
+    }, topState:function topState(n) {
+      n = this.conditionStack.length - 1 - Math.abs(n || 0);
+      if (n >= 0) {
+        return this.conditionStack[n];
+      } else {
+        return "INITIAL";
+      }
+    }, pushState:function pushState(condition) {
+      this.begin(condition);
+    }, stateStackSize:function stateStackSize() {
+      return this.conditionStack.length;
+    }, options:{}, performAction:function anonymous(yy, yy_, $avoiding_name_collisions, YY_START) {
+      var YYSTATE = YY_START;
+      switch($avoiding_name_collisions) {
+        case 0:
+          break;
+        case 1:
+          return 15;
+          break;
+        case 2:
+          return 16;
+          break;
+        case 3:
+          return 12;
+          break;
+        case 4:
+          return 12;
+          break;
+        case 5:
+          return 12;
+          break;
+        case 6:
+          return 12;
+          break;
+        case 7:
+          return 12;
+          break;
+        case 8:
+          return 12;
+          break;
+        case 9:
+          return 12;
+          break;
+        case 10:
+          return 10;
+          break;
+        case 11:
+          return 10;
+          break;
+        case 12:
+          return 10;
+          break;
+        case 13:
+          return 10;
+          break;
+        case 14:
+          return 10;
+          break;
+        case 15:
+          return 10;
+          break;
+        case 16:
+          return 11;
+          break;
+        case 17:
+          return 11;
+          break;
+        case 18:
+          return 11;
+          break;
+        case 19:
+          return 11;
+          break;
+        case 20:
+          return 11;
+          break;
+        case 21:
+          return 8;
+          break;
+        case 22:
+          return 8;
+          break;
+        case 23:
+          return 8;
+          break;
+        case 24:
+          return 8;
+          break;
+        case 25:
+          return 8;
+          break;
+        case 26:
+          return 8;
+          break;
+        case 27:
+          return 8;
+          break;
+        case 28:
+          return 8;
+          break;
+        case 29:
+          return 6;
+          break;
+        case 30:
+          return 6;
+          break;
+        case 31:
+          return 6;
+          break;
+        case 32:
+          return 6;
+          break;
+        case 33:
+          return 6;
+          break;
+        case 34:
+          return 9;
+          break;
+        case 35:
+          return 9;
+          break;
+        case 36:
+          return 9;
+          break;
+        case 37:
+          return 9;
+          break;
+        case 38:
+          return 9;
+          break;
+        case 39:
+          return 9;
+          break;
+        case 40:
+          return 9;
+          break;
+        case 41:
+          return 9;
+          break;
+        case 42:
+          return 7;
+          break;
+        case 43:
+          return 7;
+          break;
+        case 44:
+          return 7;
+          break;
+        case 45:
+          return 7;
+          break;
+        case 46:
+          return 13;
+          break;
+        case 47:
+          return 13;
+          break;
+        case 48:
+          return 13;
+          break;
+        case 49:
+          return 13;
+          break;
+        case 50:
+          return 18;
+          break;
+        case 51:
+          return 18;
+          break;
+        case 52:
+          return 18;
+          break;
+        case 53:
+          return 18;
+          break;
+        case 54:
+          return 19;
+          break;
+        case 55:
+          return 19;
+          break;
+        case 56:
+          return 19;
+          break;
+        case 57:
+          return 19;
+          break;
+        case 58:
+          return 17;
+          break;
+        case 59:
+          return 5;
+          break;
+      }
+    }, rules:[/^(?:\s+)/, /^(?:\()/, /^(?:\))/, /^(?:=)/, /^(?:<=>)/, /^(?:<->)/, /^(?:\u21d4)/, /^(?:\u2194)/, /^(?:\u2261)/, /^(?:\u2299)/, /^(?:\u2260)/, /^(?:\u2262)/, /^(?:\u22bb)/, /^(?:\u2295)/, /^(?:\^)/, /^(?:<~>)/, /^(?:=>)/, /^(?:->)/, /^(?:\u21d2)/, /^(?:\u2192)/, /^(?:\u2283)/, /^(?:\u2191)/, /^(?:\u22bc)/, /^(?:~&&)/, /^(?:~&)/, /^(?:!&&)/, /^(?:!&)/, /^(?:-&&)/, /^(?:-&)/, /^(?:&&)/, /^(?:&)/, /^(?:\u2227)/, /^(?:\*)/, /^(?:\.)/, /^(?:\u2193)/, /^(?:\u22bd)/, /^(?:~\|\|)/, /^(?:~\|)/, 
+    /^(?:!\|\|)/, /^(?:!\|)/, /^(?:-\|\|)/, /^(?:-\|)/, /^(?:\|\|)/, /^(?:\|)/, /^(?:\u2228)/, /^(?:\+)/, /^(?:~)/, /^(?:\u00ac)/, /^(?:!)/, /^(?:-)/, /^(?:([Tt][Rr][Uu][Ee]))/, /^(?:T\b)/, /^(?:\u22a4)/, /^(?:1\b)/, /^(?:([Ff][Aa][Ll][Ss][Ee]))/, /^(?:F\b)/, /^(?:\u22a5)/, /^(?:0\b)/, /^(?:([A-Za-z]))/, /^(?:$)/], conditions:{"INITIAL":{"rules":[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 
+    41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59], "inclusive":true}}};
+    return lexer;
+  }();
+  parser.lexer = lexer;
+  function Parser() {
+    this.yy = {};
+  }
+  Parser.prototype = parser;
+  parser.Parser = Parser;
+  return new Parser;
+}();
+goog.provide("CTATLogicFlattenNode");
+goog.require("CTATLogicTreeNode");
+(function() {
+  var CTATLogicFlattenNode, extend = function(child, parent) {
+    for (var key in parent) {
+      if (hasProp.call(parent, key)) {
+        child[key] = parent[key];
+      }
+    }
+    function ctor() {
+      this.constructor = child;
+    }
+    ctor.prototype = parent.prototype;
+    child.prototype = new ctor;
+    child.__super__ = parent.prototype;
+    return child;
+  }, hasProp = {}.hasOwnProperty;
+  CTATLogicFlattenNode = function(superClass) {
+    extend(CTATLogicFlattenNode, superClass);
+    function CTATLogicFlattenNode(operator1, terms1, string1, negated1) {
+      this.operator = operator1;
+      this.terms = terms1;
+      this.string = string1 != null ? string1 : null;
+      this.negated = negated1 != null ? negated1 : false;
+      CTATLogicFlattenNode.__super__.constructor.call(this, this.operator);
+    }
+    CTATLogicFlattenNode.prototype.addOperand = function(operator, operand, string) {
+      if (string == null) {
+        string = null;
+      }
+      if (operator === this.operator && !this.parens) {
+        this.terms.push(operand);
+        return this;
+      } else {
+        return CTATLogicFlattenNode.__super__.addOperand.apply(this, arguments);
+      }
+    };
+    CTATLogicFlattenNode.prototype.clone = function(deep) {
+      if (deep == null) {
+        deep = true;
+      }
+      return new CTATLogicFlattenNode(this.operator, deep ? this.terms.map(function(term) {
+        return term.clone();
+      }) : this.terms, this.string, this.negated);
+    };
+    CTATLogicFlattenNode.prototype.toString = function(parenthesized, node, other) {
+      if (parenthesized == null) {
+        parenthesized = false;
+      }
+      if (node == null) {
+        node = null;
+      }
+      if (other == null) {
+        other = false;
+      }
+      return CTATLogicFlattenNode.__super__.toString.call(this, this.terms.reduce(function(_this) {
+        return function(result, term) {
+          return "" + result + (result ? "" + _this.operatorString() : "") + term.toString(parenthesized, _this, true);
+        };
+      }(this), ""), parenthesized, node, other);
+    };
+    CTATLogicFlattenNode.prototype.evaluate = function(bindings) {
+      if (bindings == null) {
+        bindings = null;
+      }
+      return CTATLogicFlattenNode.__super__.evaluate.call(this, this.terms.reduce(function(_this) {
+        return function(result, term) {
+          return _this.applyOperator(_this.operator, result, term.evaluate(bindings));
+        };
+      }(this), this.conjunctionOp()));
+    };
+    CTATLogicFlattenNode.prototype.equals = function(node, inverse) {
+      return CTATLogicFlattenNode.__super__.equals.call(this, node, inverse) && this.terms.length === node.terms.length && this.terms.every(function(term, index) {
+        return term.equals(node.terms[index], false);
+      });
+    };
+    CTATLogicFlattenNode.prototype.subEquals = function(node, start) {
+      return this.operator === node.operator && !node.negated && this.terms.length >= node.terms.length && node.terms.every(function(_this) {
+        return function(term, index) {
+          return term.equals(_this.terms[start + index], false);
+        };
+      }(this));
+    };
+    CTATLogicFlattenNode.prototype.subNode = function(start, end) {
+      if (start != null) {
+        return Object.assign(this.clone(false), {terms:this.terms.slice(start, end)});
+      } else {
+        return this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.getOperators = function(string) {
+      if (string == null) {
+        string = false;
+      }
+      return this.terms.slice(1).reduce(function(_this) {
+        return function(result, term, index) {
+          return result.concat(_this.getOperator(string), term.getOperators(string));
+        };
+      }(this), this.terms[0].getOperators(string));
+    };
+    CTATLogicFlattenNode.prototype.getVariables = function() {
+      return this.terms.slice(1).reduce(function(_this) {
+        return function(result, term, index) {
+          return result.concat(term.getVariables());
+        };
+      }(this), this.terms[0].getVariables());
+    };
+    CTATLogicFlattenNode.prototype.getOperands = function() {
+      return this.terms.slice(0);
+    };
+    CTATLogicFlattenNode.prototype.findOperator = function(operator, path) {
+      return this.terms.slice(1).reduce(function(_this) {
+        return function(result, term, index) {
+          return result.concat(CTATLogicFlattenNode.__super__.findOperator.call(_this, operator, path, index), term.findOperator(operator, path.concat([index + 1])));
+        };
+      }(this), this.terms[0].findOperator(operator, path.concat([0])));
+    };
+    CTATLogicFlattenNode.prototype.findExpression = function(expression, path) {
+      return this.terms.slice(1).reduce(function(_this) {
+        return function(result, term, index) {
+          return result.concat(CTATLogicFlattenNode.__super__.findExpression.call(_this, expression, path, index), term.findExpression(expression, path.concat([index + 1])));
+        };
+      }(this), this.terms[0].findExpression(expression, path.concat([0])));
+    };
+    CTATLogicFlattenNode.prototype.findRule = function(rule, path, reverse) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      return this.terms.slice(1).reduce(function(_this) {
+        return function(result, term, index) {
+          return result.concat(CTATLogicFlattenNode.__super__.findRule.call(_this, rule, path, reverse, index), term.findRule(rule, path.concat([index + 1]), reverse));
+        };
+      }(this), this.terms[0].findRule(rule, path.concat([0]), reverse));
+    };
+    CTATLogicFlattenNode.prototype.applyRules = function(rules1, reverse, global) {
+      this.rules = rules1;
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (global == null) {
+        global = false;
+      }
+      if (global) {
+        this.terms = this.terms.map(function(_this) {
+          return function(term) {
+            term = term.setSteps(_this.steps).applyRules(_this.rules, reverse, true);
+            _this.setSteps(term.steps);
+            return term;
+          };
+        }(this));
+      }
+      return CTATLogicFlattenNode.__super__.applyRules.apply(this, arguments);
+    };
+    CTATLogicFlattenNode.prototype.domination = function(reverse, test) {
+      var constant;
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.junctionOp() && (constant = this.terms.find(function(_this) {
+        return function(term) {
+          return term.constant(_this.disjunctionOp());
+        };
+      }(this)))) {
+        return test || constant;
+      } else {
+        return !test && this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.negation = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.junctionOp() && this.terms.some(function(_this) {
+        return function(term, index) {
+          return _this.terms.slice(index + 1).some(function(term2) {
+            return term2.inverse(term);
+          });
+        };
+      }(this))) {
+        return test || new CTATLogicConstantNode(this.disjunctionOp());
+      } else {
+        return !test && this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.identity = function(reverse, test) {
+      var constants;
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.junctionOp() && (constants = this.terms.filter(function(_this) {
+        return function(term) {
+          return term.constant(_this.conjunctionOp());
+        };
+      }(this))).length) {
+        return test || this.junctionNode(CTATLogicTreeNode.difference(this.terms, constants));
+      } else {
+        if (reverse && this.junctionOp()) {
+          return test || this.junctionNode(this.terms.push(new CTATLogicConstantNode(this.conjunctionOp())));
+        } else {
+          return CTATLogicFlattenNode.__super__.identity.apply(this, arguments);
+        }
+      }
+    };
+    CTATLogicFlattenNode.prototype.idempotence = function(reverse, test) {
+      var duplicates;
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.junctionOp() && (duplicates = this.terms.filter(function(_this) {
+        return function(term, index) {
+          return _this.terms.slice(index + 1).some(function(term2) {
+            return term2.equals(term);
+          });
+        };
+      }(this))).length) {
+        return test || this.junctionNode(CTATLogicTreeNode.difference(this.terms, duplicates));
+      } else {
+        if (reverse && this.junctionOp()) {
+          return test || this.junctionNode(this.terms.concat(this.terms));
+        } else {
+          return CTATLogicFlattenNode.__super__.idempotence.apply(this, arguments);
+        }
+      }
+    };
+    CTATLogicFlattenNode.prototype.absorption = function(reverse, test) {
+      var absorbed;
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.junctionOp() && (absorbed = this.terms.reduce(function(_this) {
+        return function(result, term) {
+          return result.concat(term.findPairs(_this.inverseOperator(), _this.terms, "equals"));
+        };
+      }(this), [])).length) {
+        return test || this.junctionNode(CTATLogicTreeNode.replaceTerms(this.terms, absorbed, false));
+      } else {
+        return !test && this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.inverseAbsorption = function(reverse, test) {
+      var absorbed;
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.junctionOp() && (absorbed = this.terms.reduce(function(_this) {
+        return function(result, term) {
+          return result.concat(term.findPairs(_this.inverseOperator(), _this.terms, "inverse"));
+        };
+      }(this), [])).length) {
+        return test || this.junctionNode(CTATLogicTreeNode.replaceTerms(this.terms, absorbed, true));
+      } else {
+        return !test && this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.junctionNode = function(terms) {
+      if (terms.length === 1) {
+        return terms[0];
+      } else {
+        return Object.assign(this.clone(), {terms:terms});
+      }
+    };
+    CTATLogicFlattenNode.prototype.commutativity = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (this.junctionOp()) {
+        return test || new CTATLogicFlattenNode(this.operator, this.terms.slice(0).reverse());
+      } else {
+        return !test && this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.associativity = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (this.junctionOp() && this.terms.some(function(_this) {
+        return function(term) {
+          return term.operator === _this.operator;
+        };
+      }(this))) {
+        return test || this.clone(true).flatten();
+      } else {
+        return !test && this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.distributivity = function(reverse, test) {
+      var difference, index, intersection, length, subterms, term, terms;
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (!reverse && this.junctionOp() && (index = this.terms.findIndex(function(_this) {
+        return function(term) {
+          return term.junctionOp() && term.operator !== _this.operator;
+        };
+      }(this))) !== -1) {
+        term = this.terms[index];
+        terms = CTATLogicTreeNode.removeIndex(this.terms, index);
+        return test || new CTATLogicFlattenNode(term.operator, term.terms.map(function(_this) {
+          return function(term) {
+            return new CTATLogicFlattenNode(_this.operator, terms.concat([term]));
+          };
+        }(this)));
+      } else {
+        if (reverse && this.junctionOp() && this.terms.every(function(_this) {
+          return function(term) {
+            return term.junctionOp() && term.operator !== _this.operator;
+          };
+        }(this)) && (subterms = this.terms.map(function(term) {
+          return term.terms;
+        })) && (length = CTATLogicTreeNode.commonLength(subterms)) && (intersection = CTATLogicTreeNode.intersection(subterms)) && intersection.length === length - 1) {
+          return test || (difference = subterms.map(function(_this) {
+            return function(terms) {
+              return CTATLogicTreeNode.difference(terms, intersection)[0];
+            };
+          }(this)), new CTATLogicFlattenNode(this.terms[0].operator, intersection.concat([new CTATLogicFlattenNode(this.operator, difference)])));
+        } else {
+          return !test && this;
+        }
+      }
+    };
+    CTATLogicFlattenNode.prototype.deMorgan = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (reverse && this.junctionOp() && this.terms.every(function(term) {
+        return term.negationOp();
+      })) {
+        return this.reverseNode(true).negateNode();
+      } else {
+        return !test && this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.reverseNode = function(reverse) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      return new CTATLogicFlattenNode(this.inverseOperator(), this.terms.map(function(term) {
+        if (reverse) {
+          return term.unnegateNode();
+        } else {
+          return term.negateNode();
+        }
+      }));
+    };
+    CTATLogicFlattenNode.prototype.implication = function(reverse, test) {
+      var negated, nonNegated;
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (reverse && this.disjunctionOp() && this.terms.some(function(term) {
+        return term.negationOp();
+      }) && this.terms.some(function(term) {
+        return !term.negationOp();
+      })) {
+        return test || (negated = this.terms.filter(function(term) {
+          return term.negationOp();
+        }).map(function(term) {
+          return term.unnegateNode();
+        }), nonNegated = this.terms.filter(function(term) {
+          return !term.negationOp();
+        }), new CTATLogicRelationNode("IF", negated.length > 1 ? new CTATLogicFlattenNode("AND", negated) : negated[0], nonNegated.length > 1 ? new CTATLogicFlattenNode("OR", nonNegated) : nonNegated[0]));
+      } else {
+        return !test && this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.biimplication = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (reverse && this.disjunctionOp() && this.terms.length === 2 && this.terms.every(function(term) {
+        return term.conjunctionOp();
+      }) && this.terms[0].terms.every(function(_this) {
+        return function(term) {
+          return _this.terms[1].terms.some(function(term2) {
+            return term2.inverse(term);
+          });
+        };
+      }(this)) && CTATLogicTreeNode.sameNegation(this.terms[0].terms) && CTATLogicTreeNode.sameNegation(this.terms[1].terms)) {
+        return test || new CTATLogicRelationNode("IFF", this.terms[0].terms[0].unnegateNode(), this.terms[0].terms[1].unnegateNode());
+      } else {
+        return !test && this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.biimplicationToImplication = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (reverse && this.conjunctionOp() && this.terms.length === 2 && this.terms.every(function(term) {
+        return term.implicationOp();
+      }) && this.terms[0].left.equals(this.terms[1].right) && this.terms[0].right.equals(this.terms[1].left)) {
+        return test || new CTATLogicRelationNode("IFF", this.terms[0].left, this.terms[0].right);
+      } else {
+        return !test && this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.exclusiveDisjunction = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (reverse && this.disjunctionOp() && this.terms.length === 2 && this.terms.every(function(term) {
+        return term.conjunctionOp();
+      }) && this.terms[0].terms.every(function(_this) {
+        return function(term) {
+          return _this.terms[1].terms.some(function(term2) {
+            return term2.inverse(term);
+          });
+        };
+      }(this)) && CTATLogicTreeNode.oppositeNegation(this.terms[0].terms) && CTATLogicTreeNode.oppositeNegation(this.terms[1].terms)) {
+        return test || new CTATLogicRelationNode("XOR", this.terms[0].terms[0].unnegateNode(), this.terms[0].terms[1].unnegateNode());
+      } else {
+        return !test && this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.exclusiveDisjunctionToImplication = function(reverse, test) {
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (test == null) {
+        test = false;
+      }
+      if (reverse && this.conjunctionOp() && this.terms.length === 2 && this.terms.every(function(term) {
+        return term.implicationOp();
+      }) && this.terms[0].left.equals(this.terms[1].right) && this.terms[0].right.equals(this.terms[1].left)) {
+        return test || new CTATLogicRelationNode("XOR", this.terms[0].left.unnegateNode(), this.terms[0].right.unnegateNode());
+      } else {
+        return !test && this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.pushNegation = function() {
+      if (this.negated) {
+        this.negate();
+        this.invertOperator();
+        this.terms.forEach(function(_this) {
+          return function(term) {
+            term.setSteps(_this.steps).negate().pushNegation();
+            return _this.setSteps(term.steps);
+          };
+        }(this));
+        this.setSteps(++this.steps);
+      }
+      return this;
+    };
+    CTATLogicFlattenNode.prototype.flatten = function() {
+      this.terms = this.terms.reduce(function(_this) {
+        return function(result, term) {
+          if (term.operator !== _this.operator) {
+            result.push(term);
+          } else {
+            result.push.apply(result, term.terms);
+          }
+          return result;
+        };
+      }(this), []);
+      return this;
+    };
+    CTATLogicFlattenNode.prototype.distributeDisjunction = function() {
+      var rules, term;
+      if (this.disjunctionOp() && this.conjunctiveTerms()) {
+        rules = CTATLogicTreeNode.diff(this.rules, ["replaceNodes", "pushNegation"]);
+        (term = this.terms.pop()).setSteps(this.steps).terms = term.terms.map(function(_this) {
+          return function(subterm) {
+            var item;
+            item = _this.clone();
+            item.terms.push(subterm);
+            item = item.setSteps(term.steps).applyRules(rules);
+            term.setSteps(item.steps);
+            return item;
+          };
+        }(this));
+        return term.setSteps(++term.steps).applyRules(["flatten", "sort", "distributeDisjunction"]);
+      } else {
+        return this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.conjunctiveTerms = function() {
+      return this.terms.some(function(term) {
+        return term.conjunctionOp();
+      });
+    };
+    CTATLogicFlattenNode.prototype.distributeConjunction = function() {
+      var rules, term;
+      if (this.conjunctionOp() && this.disjunctiveTerms()) {
+        rules = CTATLogicTreeNode.diff(this.rules, ["replaceNodes", "pushNegation"]);
+        (term = this.terms.pop()).setSteps(this.steps).terms = term.terms.map(function(_this) {
+          return function(subterm) {
+            var item;
+            item = _this.clone();
+            item.terms.push(subterm);
+            item = item.setSteps(term.steps).applyRules(rules);
+            term.setSteps(item.steps);
+            return item;
+          };
+        }(this));
+        return term.setSteps(++term.steps).applyRules(["flatten", "sort", "distributeConjunction"]);
+      } else {
+        return this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.disjunctiveTerms = function() {
+      return this.terms.some(function(term) {
+        return term.disjunctionOp();
+      });
+    };
+    CTATLogicFlattenNode.prototype.absorb = function() {
+      this.terms = this.terms.reduce(function(_this) {
+        return function(result, term) {
+          var inverse, ref, ref1, ref2;
+          if (!(result instanceof Array)) {
+          } else {
+            if (_this.disjunctionOp() && term.constant(true) || _this.conjunctionOp() && term.constant(false)) {
+              result = term.setSteps(++_this.steps);
+            } else {
+              if (term.constant() && result.length === 0) {
+                result.push(term);
+              } else {
+                if ((ref = result[result.length - 1]) != null ? ref.equals(term, false) : void 0) {
+                  _this.setSteps(++_this.steps);
+                } else {
+                  if ((ref1 = result[result.length - 1]) != null ? ref1.equals(term, true) : void 0) {
+                    result = (new CTATLogicConstantNode(_this.disjunctionOp(), CTATLogicTreeNode.operatorStrings[_this.disjunctionOp()])).setSteps(++_this.steps);
+                  } else {
+                    if (term.junctionOp() && result.find(function(item) {
+                      return term.subterm(item, false);
+                    })) {
+                      _this.setSteps(++_this.steps);
+                    } else {
+                      if (term.junctionOp() && (inverse = result.find(function(item) {
+                        return term.subterm(item, true);
+                      }))) {
+                        _this.setSteps(++_this.steps);
+                        result.push(term.removeInverse(inverse));
+                      } else {
+                        if ((ref2 = result[0]) != null ? ref2.constant() : void 0) {
+                          result.pop();
+                          _this.setSteps(++_this.steps);
+                        }
+                        result.push(term);
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          return result;
+        };
+      }(this), []);
+      if (!(this.terms instanceof Array)) {
+        return this.terms;
+      } else {
+        return this.prune();
+      }
+    };
+    CTATLogicFlattenNode.prototype.subterm = function(item, inverse) {
+      return this.terms.some(function(subterm) {
+        return item.equals(subterm, inverse);
+      });
+    };
+    CTATLogicFlattenNode.prototype.removeInverse = function(item) {
+      this.terms = this.terms.filter(function(subterm) {
+        return !item.equals(subterm, true);
+      });
+      return this.prune();
+    };
+    CTATLogicFlattenNode.prototype.prune = function() {
+      if (this.terms.length === 1) {
+        return this.terms[0].setSteps(this.steps);
+      } else {
+        return this;
+      }
+    };
+    CTATLogicFlattenNode.prototype.sort = function() {
+      this.terms = this.terms.sort(function(node1, node2) {
+        return node1.compare(node2);
+      });
+      return this;
+    };
+    CTATLogicFlattenNode.prototype.compare = function(node) {
+      var value;
+      return (value = CTATLogicFlattenNode.__super__.compare.apply(this, arguments)) || this.terms.some(function(term, index) {
+        return value = term.compare(node.terms[index]);
+      }) && value || this.compareNegations(node);
+    };
+    CTATLogicFlattenNode.prototype.countVariables = function() {
+      return this.terms.reduce(function(result, term) {
+        return result + term.countVariables();
+      }, 0);
+    };
+    CTATLogicFlattenNode.prototype.countLevels = function() {
+      return 1 + this.terms.reduce(function(result, term) {
+        return Math.max(result, term.countLevels());
+      }, 0);
+    };
+    return CTATLogicFlattenNode;
+  }(CTATLogicTreeNode);
+  if (typeof module !== "undefined" && module !== null) {
+    module.exports = CTATLogicFlattenNode;
+  } else {
+    this.CTATLogicFlattenNode = CTATLogicFlattenNode;
+  }
+}).call(this);
+goog.provide("CTATLogicParser");
+goog.require("CTATLogicGrammar");
+goog.require("CTATLogicRelationNode");
+goog.require("CTATLogicFlattenNode");
+goog.require("CTATLogicVariableNode");
+goog.require("CTATLogicConstantNode");
+goog.require("CTATLogicTreeNode");
+(function() {
+  var CTATLogicParser;
+  CTATLogicParser = function() {
+    function CTATLogicParser(variableTable) {
+      this.parser = new CTATLogicGrammar.Parser;
+      this.parser.yy = {CTATLogicRelationNode:CTATLogicRelationNode, CTATLogicFlattenNode:CTATLogicFlattenNode, CTATLogicVariableNode:CTATLogicVariableNode, CTATLogicConstantNode:CTATLogicConstantNode, CTATLogicTreeNode:CTATLogicTreeNode};
+      this.parser.yy.variableTable = variableTable;
+    }
+    CTATLogicParser.SORT = ["sort"];
+    CTATLogicParser.NNF = ["replaceNodes", "pushNegation", "flatten", "sort", "absorb", "sort"];
+    CTATLogicParser.CNF = ["replaceNodes", "pushNegation", "flatten", "sort", "distributeDisjunction", "absorb", "sort"];
+    CTATLogicParser.DNF = ["replaceNodes", "pushNegation", "flatten", "sort", "distributeConjunction", "absorb", "sort"];
+    CTATLogicParser.prototype.getTree = function(expression, clone, steps) {
+      var result;
+      if (clone == null) {
+        clone = false;
+      }
+      if (steps == null) {
+        steps = false;
+      }
+      result = expression instanceof CTATLogicTreeNode ? clone ? expression.clone() : expression : expression instanceof String ? function() {
+        try {
+          return Object.assign(this.parser.parse(expression), {path:expression.path});
+        } catch (_error) {
+          return null;
+        }
+      }.call(this) : function() {
+        try {
+          return this.parser.parse(String(expression));
+        } catch (_error) {
+          return null;
+        }
+      }.call(this);
+      if (steps) {
+        if (result != null) {
+          result.setSteps(0);
+        }
+      }
+      return result;
+    };
+    CTATLogicParser.prototype.getExpression = function(expression, tree, parenthesized) {
+      if (parenthesized == null) {
+        parenthesized = false;
+      }
+      if (expression instanceof CTATLogicTreeNode) {
+        return tree;
+      } else {
+        if (typeof tree === "string") {
+          return tree;
+        } else {
+          if (tree != null ? tree.path : void 0) {
+            return Object.assign(new String(tree.toString(parenthesized)), {path:tree.path});
+          } else {
+            if (tree != null ? tree.steps : void 0) {
+              return Object.assign(new String(tree.toString(parenthesized)), {steps:tree.steps});
+            } else {
+              if (tree != null) {
+                return tree.toString(parenthesized);
+              } else {
+                return tree;
+              }
+            }
+          }
+        }
+      }
+    };
+    CTATLogicParser.prototype.equalExpressions = function(expression1, expression2) {
+      if (expression1 instanceof CTATLogicTreeNode) {
+        return expression1.toString() === expression2.toString();
+      } else {
+        return expression1 === expression2;
+      }
+    };
+    CTATLogicParser.prototype.logicSetMode = function(object) {
+      Object.assign(this.parser.yy, object);
+      return object;
+    };
+    CTATLogicParser.prototype.logicParse = function(expression) {
+      return this.getTree(expression);
+    };
+    CTATLogicParser.prototype.logicGetError = function(expression) {
+      var error;
+      try {
+        expression instanceof CTATLogicTreeNode || this.parser.parse(String(expression));
+        return null;
+      } catch (_error) {
+        error = _error;
+        return error;
+      }
+    };
+    CTATLogicParser.prototype.logicStringify = function(expression) {
+      return this.getExpression("", expression, this.parser.yy.strictMode);
+    };
+    CTATLogicParser.prototype.logicEvaluate = function(expression, bindings) {
+      if (bindings == null) {
+        bindings = null;
+      }
+      try {
+        return this.getTree(expression).evaluate(bindings);
+      } catch (_error) {
+        return null;
+      }
+    };
+    CTATLogicParser.prototype.logicSort = function(expression) {
+      return this.getExpression(expression, this.getTree(expression, true).applyRules(CTATLogicParser.SORT, false, true));
+    };
+    CTATLogicParser.prototype.logicGetOperator = function(expression, string) {
+      var ref;
+      if (string == null) {
+        string = false;
+      }
+      return (ref = this.getTree(expression)) != null ? ref.getOperator(string) : void 0;
+    };
+    CTATLogicParser.prototype.logicGetOperators = function(expression, string) {
+      var ref;
+      if (string == null) {
+        string = false;
+      }
+      return (ref = this.getTree(expression)) != null ? ref.getOperators(string) : void 0;
+    };
+    CTATLogicParser.prototype.logicGetVariables = function(expression) {
+      var ref;
+      return (ref = this.getTree(expression)) != null ? ref.getVariables() : void 0;
+    };
+    CTATLogicParser.prototype.logicGetOperands = function(expression) {
+      var ref;
+      return (ref = this.getTree(expression)) != null ? ref.getOperands().map(function(_this) {
+        return function(subexpression) {
+          return _this.getExpression(expression, subexpression);
+        };
+      }(this)) : void 0;
+    };
+    CTATLogicParser.prototype.logicFindOperator = function(expression, operator) {
+      var ref, ref1;
+      return (ref = this.getTree(expression)) != null ? (ref1 = ref.findOperator(operator, [])) != null ? ref1.map(function(_this) {
+        return function(subexpression) {
+          return _this.getExpression(expression, subexpression);
+        };
+      }(this)) : void 0 : void 0;
+    };
+    CTATLogicParser.prototype.logicFindExpression = function(expression, subexpression) {
+      var ref, ref1;
+      return (ref = this.getTree(expression)) != null ? (ref1 = ref.findExpression(this.getTree(subexpression), [])) != null ? ref1.map(function(_this) {
+        return function(subexpression) {
+          return _this.getExpression(expression, subexpression);
+        };
+      }(this)) : void 0 : void 0;
+    };
+    CTATLogicParser.prototype.logicFindRule = function(expression, rule, reverse) {
+      var ref, ref1;
+      if (reverse == null) {
+        reverse = false;
+      }
+      return (ref = this.getTree(expression)) != null ? (ref1 = ref.findRule(rule, [], reverse)) != null ? ref1.map(function(_this) {
+        return function(subexpression) {
+          return _this.getExpression(expression, subexpression);
+        };
+      }(this)) : void 0 : void 0;
+    };
+    CTATLogicParser.prototype.logicApplyRules = function(expression, rules, reverse, global) {
+      var tree;
+      if (reverse == null) {
+        reverse = false;
+      }
+      if (global == null) {
+        global = false;
+      }
+      return this.getExpression(expression, function() {
+        try {
+          return (tree = this.getTree(expression, global)) && tree.applyRules(rules, reverse, global);
+        } catch (_error) {
+        }
+      }.call(this));
+    };
+    CTATLogicParser.prototype.logicReplaceExpression = function(expression, oldSubexpression, newSubexpression, locator) {
+      var ref, ref1;
+      if (locator == null) {
+        locator = null;
+      }
+      locator = (locator != null ? locator : (ref = oldSubexpression.path) != null ? ref.slice(0) : void 0) || 0;
+      return this.getExpression(expression, ((ref1 = this.getTree(expression)) != null ? ref1.replaceExpression(this.getTree(oldSubexpression), this.getTree(newSubexpression), locator) : void 0) || null);
+    };
+    CTATLogicParser.prototype.logicSimplifyNNF = function(expression, steps) {
+      if (steps == null) {
+        steps = false;
+      }
+      return this.getExpression(expression, function() {
+        try {
+          return this.getTree(expression, true, steps).applyRules(CTATLogicParser.NNF, false, true);
+        } catch (_error) {
+          return null;
+        }
+      }.call(this));
+    };
+    CTATLogicParser.prototype.logicSimplifyCNF = function(expression, steps) {
+      if (steps == null) {
+        steps = false;
+      }
+      return this.getExpression(expression, function() {
+        try {
+          return this.getTree(expression, true, steps).applyRules(CTATLogicParser.CNF, false, true);
+        } catch (_error) {
+          return null;
+        }
+      }.call(this));
+    };
+    CTATLogicParser.prototype.logicSimplifyDNF = function(expression, steps) {
+      if (steps == null) {
+        steps = false;
+      }
+      return this.getExpression(expression, function() {
+        try {
+          return this.getTree(expression, true, steps).applyRules(CTATLogicParser.DNF, false, true);
+        } catch (_error) {
+          return null;
+        }
+      }.call(this));
+    };
+    CTATLogicParser.prototype.logicValid = function(expression) {
+      return this.logicParse(expression) != null;
+    };
+    CTATLogicParser.prototype.logicValued = function(expression, bindings) {
+      var value;
+      if (bindings == null) {
+        bindings = null;
+      }
+      return (value = this.logicEvaluate(expression, bindings)) != null || value;
+    };
+    CTATLogicParser.prototype.logicSorted = function(expression) {
+      var expression1, expression2;
+      if ((expression1 = this.logicSort(expression)) != null && (expression2 = this.getExpression(expression, this.getTree(expression))) != null) {
+        return this.equalExpressions(expression1, expression2);
+      } else {
+        return null;
+      }
+    };
+    CTATLogicParser.prototype.logicSimplifiedNNF = function(expression) {
+      var expression1, expression2;
+      if ((expression1 = this.logicSimplifyNNF(expression)) != null && (expression2 = this.logicSort(expression)) != null) {
+        return this.equalExpressions(expression1, expression2);
+      } else {
+        return null;
+      }
+    };
+    CTATLogicParser.prototype.logicSimplifiedCNF = function(expression) {
+      var expression1, expression2;
+      if ((expression1 = this.logicSimplifyCNF(expression)) != null && (expression2 = this.logicSort(expression)) != null) {
+        return this.equalExpressions(expression1, expression2);
+      } else {
+        return null;
+      }
+    };
+    CTATLogicParser.prototype.logicSimplifiedDNF = function(expression) {
+      var expression1, expression2;
+      if ((expression1 = this.logicSimplifyDNF(expression)) != null && (expression2 = this.logicSort(expression)) != null) {
+        return this.equalExpressions(expression1, expression2);
+      } else {
+        return null;
+      }
+    };
+    CTATLogicParser.prototype.logicIdentical = function(expression1, expression2) {
+      if ((expression1 = this.logicSort(expression1)) != null && (expression2 = this.logicSort(expression2)) != null) {
+        return this.equalExpressions(expression1, expression2);
+      } else {
+        return null;
+      }
+    };
+    CTATLogicParser.prototype.logicEqual = function(expression1, expression2, bindings) {
+      var value1, value2;
+      if (bindings == null) {
+        bindings = null;
+      }
+      value1 = this.logicEvaluate(expression1, bindings);
+      value2 = this.logicEvaluate(expression2, bingings);
+      if (value1 != null && value2 != null) {
+        return value1 === value2;
+      } else {
+        if (value1 === null || value2 === null) {
+          return null;
+        } else {
+          return void 0;
+        }
+      }
+    };
+    CTATLogicParser.prototype.logicEquivalent = function(expression1, expression2) {
+      if ((expression1 = this.logicSimplifyDNF(expression1)) != null && (expression2 = this.logicSimplifyDNF(expression2)) != null) {
+        return this.equalExpressions(expression1, expression2);
+      } else {
+        return null;
+      }
+    };
+    CTATLogicParser.prototype.logicSemanticEquivalent = function(expression1, expression2) {
+      try {
+        return !this.getTree(expression1).findCounterExample(this.getTree(expression2));
+      } catch (_error) {
+        return null;
+      }
+    };
+    CTATLogicParser.prototype.logicFindCounterExample = function(expression1, expression2) {
+      try {
+        return this.getTree(expression1).findCounterExample(this.getTree(expression2));
+      } catch (_error) {
+        return null;
+      }
+    };
+    return CTATLogicParser;
+  }();
+  if (typeof module !== "undefined" && module !== null) {
+    module.exports = CTATLogicParser;
+  } else {
+    this.CTATLogicParser = CTATLogicParser;
+  }
+}).call(this);
+goog.provide("CTATChemTreeNode");
+(function() {
+  var CTATChemTreeNode;
+  CTATChemTreeNode = function() {
+    function CTATChemTreeNode() {
+    }
+    CTATChemTreeNode.operators = [["CONST"], ["VAR"], ["EXP", "ROOT"], ["UPLUS", "UMINUS"], ["ITIMES", "TIMES", "DIVIDE"], ["IDIVIDE", "REM"], ["PLUS", "MINUS"], ["LESS", "LESSEQUAL", "EQUAL", "NOTEQUAL", "GREATEREQUAL", "GREATER"]];
+    CTATChemTreeNode.relationalOperators = ["LESS", "LESSEQUAL", "EQUAL", "NOTEQUAL", "GREATEREQUAL", "GREATER"];
+    CTATChemTreeNode.operatorPrecedence = function(operator1, operator2) {
+      return Math.sign(this.operators.findIndex(function(group) {
+        return group.includes(operator1);
+      }) - this.operators.findIndex(function(group) {
+        return group.includes(operator2);
+      }));
+    };
+    CTATChemTreeNode.operatorStrings = {"EXP":"^", "ROOT":"|", "UPLUS":"+", "UMINUS":"-", "ITIMES":"", "TIMES":"*", "DIVIDE":"/", "IDIVIDE":"//", "REM":"%", "PLUS":"+", "MINUS":"-", "LESS":"<", "LESSEQUAL":"<=", "EQUAL":"=", "NOTEQUAL":"!=", "GREATEREQUAL":">=", "GREATER":">"};
+    CTATChemTreeNode.toOperatorString = function(operator) {
+      return this.operatorStrings[operator] || "";
+    };
+    CTATChemTreeNode.diff = function(list1, list2) {
+      return list1.filter(function(item) {
+        return !list2.includes(item);
+      });
+    };
+    CTATChemTreeNode.prototype.toString = function(string, symDelim, wrapSymbols) {
+      var i, j, ref;
+      if (symDelim == null) {
+        symDelim = "";
+      }
+      if (wrapSymbols == null) {
+        wrapSymbols = false;
+      }
+      if (wrapSymbols) {
+        string = symDelim + string + symDelim;
+      }
+      if (this.checkParens()) {
+        string = "(" + string + ")";
+      }
+      if (this.inverted()) {
+        string = "1/" + string;
+      }
+      if (this.negated()) {
+        string = "-" + string;
+      }
+      for (i = j = 0, ref = this.parens;0 <= ref ? j < ref : j > ref;i = 0 <= ref ? ++j : --j) {
+        string = "(" + string + ")";
+      }
+      if (this.units) {
+        string += this.units.toString(wrapSymbols);
+      }
+      return string;
+    };
+    CTATChemTreeNode.prototype.setParens = function(operator1, right) {
+      if (right == null) {
+        right = false;
+      }
+      if (this.checkParens(operator1, right)) {
+        this.parens = 1;
+      }
+      return this;
+    };
+    CTATChemTreeNode.prototype.checkParens = function(operator1, right) {
+      var operator2, precedence;
+      if (right == null) {
+        right = false;
+      }
+      if (operator1 != null) {
+        operator2 = this.negated() ? "UMINUS" : this.inverted() ? "DIVIDE" : this.operator;
+      } else {
+        operator1 = this.negated() ? "MINUS" : this.inverted() ? "DIVIDE" : null;
+        operator2 = this.operator;
+      }
+      precedence = CTATChemTreeNode.operatorPrecedence(operator1, operator2);
+      return operator1 != null && (precedence < 0 || precedence === 0 && right);
+    };
+    CTATChemTreeNode.prototype.evaluate = function(value) {
+      return this.sign * Math.pow(value, this.exp);
+    };
+    CTATChemTreeNode.prototype.applyOperator = function(left, right) {
+      switch(this.operator) {
+        case "LESS":
+          return left < right;
+        case "GREATER":
+          return left > right;
+        case "LESSEQUAL":
+          return left <= right;
+        case "GREATEREQUAL":
+          return left >= right;
+        case "EQUAL":
+          return left === right;
+        case "NOTEQUAL":
+          return left !== right;
+        case "PLUS":
+          return left + right;
+        case "MINUS":
+          return left - right;
+        case "TIMES":
+        ;
+        case "ITIMES":
+          return left * right;
+        case "DIVIDE":
+          return left / right;
+        case "EXP":
+          return Math.pow(left, right);
+        case "ROOT":
+          return Math.pow(left, 1) / right;
+        case "REM":
+          return left % right;
+        case "IDIVIDE":
+          return Math.floor(left / right);
+        case "UPLUS":
+          return left;
+        case "UMINUS":
+          return -left;
+      }
+    };
+    CTATChemTreeNode.prototype.equals = function(node) {
+      return node && this.operator === node.operator && this.sign === node.sign && this.exp === node.exp && this.parens === node.parens;
+    };
+    CTATChemTreeNode.prototype.simplify = function(methods) {
+      this.methods = methods;
+      return this.simplifyNode(this.methods);
+    };
+    CTATChemTreeNode.prototype.simplifyNode = function(methods) {
+      var j, len, method, ref, result;
+      this.methods = methods;
+      result = this;
+      ref = this.methods;
+      for (j = 0, len = ref.length;j < len;j++) {
+        method = ref[j];
+        result = result[method].call(result);
+        result.methods = this.methods;
+      }
+      delete result.methods;
+      return result;
+    };
+    CTATChemTreeNode.prototype.simpleFlatten = function() {
+      return this;
+    };
+    CTATChemTreeNode.prototype.flatten = function() {
+      return this;
+    };
+    CTATChemTreeNode.prototype.computeConstants = function() {
+      return this;
+    };
+    CTATChemTreeNode.prototype.combineSimilar = function() {
+      return this;
+    };
+    CTATChemTreeNode.prototype.expand = function() {
+      return this;
+    };
+    CTATChemTreeNode.prototype.distribute = function() {
+      return this;
+    };
+    CTATChemTreeNode.prototype.removeIdentity = function() {
+      return this;
+    };
+    CTATChemTreeNode.prototype.sort = function() {
+      return this;
+    };
+    CTATChemTreeNode.prototype.spreadIdentity = function() {
+      return this;
+    };
+    CTATChemTreeNode.prototype.stripIdentity = function() {
+      return this;
+    };
+    CTATChemTreeNode.prototype.multiplyOne = function(marked) {
+      if (marked == null) {
+        marked = false;
+      }
+      return (new CTATChemMultiplicationNode("TIMES", [new CTATChemConstantNode(1, marked), this])).popNegation().pushNegation();
+    };
+    CTATChemTreeNode.prototype.powerOne = function(marked) {
+      if (marked == null) {
+        marked = false;
+      }
+      return (new CTATChemPowerNode("EXP", this, new CTATChemConstantNode(1, marked))).popInversion().pushInversion().popNegation();
+    };
+    CTATChemTreeNode.prototype.compare = function(node, reverse) {
+      return CTATChemTreeNode.operatorPrecedence(this.operator, node.operator);
+    };
+    CTATChemTreeNode.prototype.compareSigns = function(node, reverse) {
+      return (Math.sign(this.sign - node.sign) || Math.sign(this.exp - node.exp)) * reverse;
+    };
+    CTATChemTreeNode.prototype.countVariables = function() {
+      return 0;
+    };
+    CTATChemTreeNode.prototype.pushNegation = function() {
+      return this;
+    };
+    CTATChemTreeNode.prototype.popNegation = function() {
+      return this;
+    };
+    CTATChemTreeNode.prototype.pushInversion = function() {
+      return this;
+    };
+    CTATChemTreeNode.prototype.popInversion = function() {
+      return this;
+    };
+    CTATChemTreeNode.prototype.negate = function() {
+      this.sign = -this.sign;
+      return this;
+    };
+    CTATChemTreeNode.prototype.invert = function() {
+      this.exp = -this.exp;
+      return this;
+    };
+    CTATChemTreeNode.prototype.addition = function() {
+      return this.operator === "PLUS";
+    };
+    CTATChemTreeNode.prototype.subtraction = function() {
+      return this.operator === "MINUS";
+    };
+    CTATChemTreeNode.prototype.multiplication = function() {
+      return this.operator === "TIMES";
+    };
+    CTATChemTreeNode.prototype.division = function() {
+      return this.operator === "DIVIDE";
+    };
+    CTATChemTreeNode.prototype.intDivision = function() {
+      return this.operator === "IDIVIDE";
+    };
+    CTATChemTreeNode.prototype.power = function() {
+      return this.operator === "EXP";
+    };
+    CTATChemTreeNode.prototype.root = function() {
+      return this.operator === "ROOT";
+    };
+    CTATChemTreeNode.prototype.negation = function() {
+      return this.operator === "UMINUS";
+    };
+    CTATChemTreeNode.prototype.unary = function() {
+      var ref;
+      return (ref = this.operator) === "UPLUS" || ref === "UMINUS";
+    };
+    CTATChemTreeNode.prototype.constant = function(value) {
+      return false;
+    };
+    CTATChemTreeNode.prototype.integer = function() {
+      return false;
+    };
+    CTATChemTreeNode.prototype.negated = function() {
+      return this.sign < 0;
+    };
+    CTATChemTreeNode.prototype.inverted = function() {
+      return this.exp < 0;
+    };
+    CTATChemTreeNode.prototype.parented = function() {
+      return this.parens > 0;
+    };
+    CTATChemTreeNode.prototype.even = function() {
+      return false;
+    };
+    CTATChemTreeNode.prototype.setUnit = function(unitExpNode) {
+      this.units = unitExpNode;
+      return this;
+    };
+    CTATChemTreeNode.prototype.getVariables = function() {
+      return [];
+    };
+    CTATChemTreeNode.prototype.setVariable = function() {
+      return this;
+    };
+    return CTATChemTreeNode;
+  }();
+  if (typeof module !== "undefined" && module !== null) {
+    module.exports = CTATChemTreeNode;
+  } else {
+    this.CTATChemTreeNode = CTATChemTreeNode;
+  }
+}).call(this);
+goog.provide("CTATChemRelationNode");
+goog.require("CTATChemTreeNode");
+(function() {
+  var CTATChemRelationNode, extend = function(child, parent) {
+    for (var key in parent) {
+      if (hasProp.call(parent, key)) {
+        child[key] = parent[key];
+      }
+    }
+    function ctor() {
+      this.constructor = child;
+    }
+    ctor.prototype = parent.prototype;
+    child.prototype = new ctor;
+    child.__super__ = parent.prototype;
+    return child;
+  }, hasProp = {}.hasOwnProperty;
+  CTATChemRelationNode = function(superClass) {
+    extend(CTATChemRelationNode, superClass);
+    function CTATChemRelationNode(operator, left, right1, parens, sign, exp) {
+      this.operator = operator;
+      this.left = left;
+      this.right = right1;
+      this.parens = parens != null ? parens : 0;
+      this.sign = sign != null ? sign : 1;
+      this.exp = exp != null ? exp : 1;
+    }
+    CTATChemRelationNode.prototype.clone = function() {
+      return new CTATChemRelationNode(this.operator, this.left.clone(), this.right.clone(), this.parens, this.sign, this.exp);
+    };
+    CTATChemRelationNode.prototype.toString = function(wrapSymbols) {
+      if (wrapSymbols == null) {
+        wrapSymbols = false;
+      }
+      this.left.setParens(this.operator);
+      this.right.setParens(this.operator);
+      return CTATChemRelationNode.__super__.toString.call(this, "" + this.left.toString(wrapSymbols) + CTATChemTreeNode.toOperatorString(this.operator) + this.right.toString(wrapSymbols));
+    };
+    CTATChemRelationNode.prototype.evaluate = function() {
+      var right;
+      return this.applyOperator(this.left.evaluate(), right = this.right.evaluate());
+    };
+    CTATChemRelationNode.prototype.equals = function(node) {
+      return CTATChemRelationNode.__super__.equals.call(this, node) && this.left.equals(node.left) && this.right.equals(node.right);
+    };
+    CTATChemRelationNode.prototype.simplify = function(methods) {
+      this.methods = methods;
+      this.left = this.left.simplify(this.methods);
+      this.right = this.right.simplify(this.methods);
+      return CTATChemRelationNode.__super__.simplify.apply(this, arguments);
+    };
+    CTATChemRelationNode.prototype.computeConstants = function() {
+      if (this.left.constant() && this.right.constant()) {
+        return new CTATChemConstantNode(this.evaluate());
+      } else {
+        return this;
+      }
+    };
+    CTATChemRelationNode.prototype.sort = function() {
+      var ref, ref1, ref2;
+      switch(this.operator) {
+        case "GREATER":
+          this.operator = "LESS";
+          ref = [this.right, this.left], this.left = ref[0], this.right = ref[1];
+          break;
+        case "GREATEREQUAL":
+          this.operator = "LESSEQUAL";
+          ref1 = [this.right, this.left], this.left = ref1[0], this.right = ref1[1];
+          break;
+        case "EQUAL":
+        ;
+        case "NOTEQUAL":
+          if (this.left.compare(this.right) < 0) {
+            ref2 = [this.right, this.left], this.left = ref2[0], this.right = ref2[1];
+          }
+        ;
+      }
+      return this;
+    };
+    CTATChemRelationNode.prototype.countVariables = function() {
+      return this.left.countVariables() + this.right.countVariables();
+    };
+    CTATChemRelationNode.prototype.getVariables = function() {
+      return this.left.getVariables().concat(this.right.getVariables());
+    };
+    CTATChemRelationNode.prototype.setVariable = function(varName, parsedValue) {
+      if (this.left.operator === "VAR" && this.left.variable === varName) {
+        this.left = parsedValue;
+      } else {
+        this.left.setVariable(varName, parsedValue);
+      }
+      if (this.right.operator === "VAR" && this.right.variable === varName) {
+        return this.right = parsedValue;
+      } else {
+        return this.right.setVariable(varName, parsedValue);
+      }
+    };
+    return CTATChemRelationNode;
+  }(CTATChemTreeNode);
+  if (typeof module !== "undefined" && module !== null) {
+    module.exports = CTATChemRelationNode;
+  } else {
+    this.CTATChemRelationNode = CTATChemRelationNode;
+  }
+}).call(this);
+goog.provide("CTATChemAdditionNode");
+goog.require("CTATChemTreeNode");
+(function() {
+  var CTATChemAdditionNode, extend = function(child, parent) {
+    for (var key in parent) {
+      if (hasProp.call(parent, key)) {
+        child[key] = parent[key];
+      }
+    }
+    function ctor() {
+      this.constructor = child;
+    }
+    ctor.prototype = parent.prototype;
+    child.prototype = new ctor;
+    child.__super__ = parent.prototype;
+    return child;
+  }, hasProp = {}.hasOwnProperty;
+  CTATChemAdditionNode = function(superClass) {
+    extend(CTATChemAdditionNode, superClass);
+    function CTATChemAdditionNode(operator, terms1, parens, sign, exp) {
+      this.operator = operator;
+      this.terms = terms1;
+      this.parens = parens != null ? parens : 0;
+      this.sign = sign != null ? sign : 1;
+      this.exp = exp != null ? exp : 1;
+    }
+    CTATChemAdditionNode.prototype.clone = function() {
+      return new CTATChemAdditionNode(this.operator, this.terms.map(function(term) {
+        return term.clone();
+      }), this.parens, this.sign, this.exp);
+    };
+    CTATChemAdditionNode.prototype.toString = function(wrapSymbols) {
+      if (wrapSymbols == null) {
+        wrapSymbols = false;
+      }
+      return CTATChemAdditionNode.__super__.toString.call(this, this.terms.reduce(function(_this) {
+        return function(result, term) {
+          term.setParens(_this.operator);
+          return "" + result + (result && !term.negated() ? "+" : "") + term.toString(wrapSymbols);
+        };
+      }(this), ""));
+    };
+    CTATChemAdditionNode.prototype.evaluate = function() {
+      return CTATChemAdditionNode.__super__.evaluate.call(this, this.terms.reduce(function(_this) {
+        return function(result, term) {
+          return _this.applyOperator(result, term.evaluate());
+        };
+      }(this), 0));
+    };
+    CTATChemAdditionNode.prototype.equals = function(node) {
+      return CTATChemAdditionNode.__super__.equals.call(this, node) && this.terms.length === node.terms.length && this.terms.every(function(term, index) {
+        return term.equals(node.terms[index]);
+      });
+    };
+    CTATChemAdditionNode.prototype.simplify = function(methods) {
+      this.methods = methods;
+      this.terms = this.terms.map(function(_this) {
+        return function(term) {
+          return term.simplify(_this.methods);
+        };
+      }(this));
+      return CTATChemAdditionNode.__super__.simplify.apply(this, arguments);
+    };
+    CTATChemAdditionNode.prototype.simpleFlatten = function() {
+      if (this.terms[0].negation() && !this.terms[0].inverted()) {
+        this.terms[0] = this.terms[0].base.negate();
+      }
+      if (this.subtraction()) {
+        this.terms[1].negate();
+        this.operator = "PLUS";
+      }
+      this.terms = this.terms.reduce(function(result, term) {
+        if (term.inverted() || term.parented() || !term.addition()) {
+          result.push(term);
+        } else {
+          result.push.apply(result, term.pushNegation().terms);
+        }
+        return result;
+      }, []);
+      return this;
+    };
+    CTATChemAdditionNode.prototype.flatten = function() {
+      this.simpleFlatten();
+      return this.pushNegation();
+    };
+    CTATChemAdditionNode.prototype.computeConstants = function() {
+      var constant, constantIndex;
+      if ((constantIndex = this.terms.findIndex(function(term) {
+        return term.constant();
+      })) >= 0) {
+        constant = this.terms[constantIndex].evaluate();
+        this.terms = this.terms.filter(function(term, index) {
+          return index <= constantIndex || !term.constant() || (constant += term.evaluate()) && false;
+        });
+        if (constant === 0 && this.terms.length > 1) {
+          this.terms.splice(constantIndex, 1);
+        } else {
+          this.terms[constantIndex].set(constant);
+        }
+      }
+      if (this.terms.length > 1) {
+        return this;
+      } else {
+        return this.pushInversion().terms[0];
+      }
+    };
+    CTATChemAdditionNode.prototype.combineSimilar = function() {
+      var groups;
+      groups = [];
+      this.terms.forEach(function(term) {
+        var group, splitPair;
+        splitPair = term.constant() ? [null, term] : (term = term.multiplyOne(), [term, term.factors.shift()]);
+        if (group = groups.find(function(group) {
+          var ref;
+          return (ref = group[0]) != null ? ref.equals(splitPair[0]) : void 0;
+        })) {
+          return group[1] += splitPair[1].evaluate();
+        } else {
+          return groups.push([splitPair[0], splitPair[1].evaluate()]);
+        }
+      });
+      this.terms = groups.reduce(function(result, group) {
+        if (group[1] !== 0) {
+          group[1] = (new CTATChemConstantNode(group[1])).popNegation();
+          if (!group[0]) {
+            result.push(group[1]);
+          } else {
+            group[0].factors.unshift(group[1]);
+            result.push(group[0].removeIdentity());
+          }
+        }
+        return result;
+      }, []);
+      if (this.terms.length > 1) {
+        return this;
+      } else {
+        if (this.terms.length === 1) {
+          return this.pushInversion().terms[0];
+        } else {
+          this.terms[0] = new CTATChemConstantNode(0);
+          return this.pushInversion().terms[0];
+        }
+      }
+    };
+    CTATChemAdditionNode.prototype.removeIdentity = function(marked) {
+      var terms;
+      if (marked == null) {
+        marked = false;
+      }
+      terms = this.terms.filter(function(term) {
+        return !term.constant(0, marked);
+      });
+      this.terms = terms.length ? terms : this.terms.slice(0, 1);
+      if (this.terms.length > 1) {
+        return this;
+      } else {
+        return this.pushInversion().terms[0];
+      }
+    };
+    CTATChemAdditionNode.prototype.sort = function() {
+      this.spreadIdentity();
+      this.terms = this.terms.sort(function(node1, node2) {
+        return -node1.compare(node2, true);
+      });
+      return this.stripIdentity();
+    };
+    CTATChemAdditionNode.prototype.spreadIdentity = function() {
+      this.terms = this.terms.map(function(term) {
+        return term.multiplyOne(true);
+      });
+      return this;
+    };
+    CTATChemAdditionNode.prototype.stripIdentity = function() {
+      this.terms = this.terms.map(function(term) {
+        return term.removeIdentity(true);
+      });
+      return this;
+    };
+    CTATChemAdditionNode.prototype.compare = function(node, reverse) {
+      var value;
+      return (value = CTATChemAdditionNode.__super__.compare.apply(this, arguments)) || this.countVariables() - node.countVariables() || this.terms.some(function(term, index) {
+        return value = term.compare(node.terms[index], reverse);
+      }) && value || this.compareSigns(node, reverse);
+    };
+    CTATChemAdditionNode.prototype.countVariables = function() {
+      return this.terms.reduce(function(result, term) {
+        return result + term.countVariables();
+      }, 0);
+    };
+    CTATChemAdditionNode.prototype.pushNegation = function() {
+      if (this.negated()) {
+        this.negate();
+        this.terms.forEach(function(term) {
+          return term.negate();
+        });
+      }
+      return this;
+    };
+    CTATChemAdditionNode.prototype.popNegation = function() {
+      if (this.terms[0].negated()) {
+        this.negate();
+        this.terms.forEach(function(term) {
+          return term.negate();
+        });
+      }
+      return this;
+    };
+    CTATChemAdditionNode.prototype.pushInversion = function() {
+      if (this.inverted()) {
+        this.invert();
+        this.terms[0].invert();
+      }
+      return this;
+    };
+    CTATChemAdditionNode.prototype.even = function() {
+      return !this.inverted && this.terms.every(function(term) {
+        return term.even();
+      });
+    };
+    CTATChemAdditionNode.prototype.getVariables = function() {
+      var vars;
+      vars = [];
+      this.terms.forEach(function(_this) {
+        return function(term) {
+          return vars = vars.concat(term.getVariables());
+        };
+      }(this));
+      return vars;
+    };
+    CTATChemAdditionNode.prototype.setVariable = function(varName, parsedValue) {
+      var i, results;
+      i = 0;
+      results = [];
+      while (i < this.terms.length) {
+        if (this.terms[i].operator === "VAR" && this.terms[i].variable === varName) {
+          this.terms[i] = parsedValue;
+        } else {
+          this.terms[i].setVariable(varName, parsedValue);
+        }
+        results.push(i++);
+      }
+      return results;
+    };
+    return CTATChemAdditionNode;
+  }(CTATChemTreeNode);
+  if (typeof module !== "undefined" && module !== null) {
+    module.exports = CTATChemAdditionNode;
+  } else {
+    this.CTATChemAdditionNode = CTATChemAdditionNode;
+  }
+}).call(this);
+goog.provide("CTATChemMultiplicationNode");
+goog.require("CTATChemTreeNode");
+(function() {
+  var CTATChemMultiplicationNode, extend = function(child, parent) {
+    for (var key in parent) {
+      if (hasProp.call(parent, key)) {
+        child[key] = parent[key];
+      }
+    }
+    function ctor() {
+      this.constructor = child;
+    }
+    ctor.prototype = parent.prototype;
+    child.prototype = new ctor;
+    child.__super__ = parent.prototype;
+    return child;
+  }, hasProp = {}.hasOwnProperty;
+  CTATChemMultiplicationNode = function(superClass) {
+    extend(CTATChemMultiplicationNode, superClass);
+    function CTATChemMultiplicationNode(operator1, factors1, parens, sign, exp) {
+      this.operator = operator1;
+      this.factors = factors1;
+      this.parens = parens != null ? parens : 0;
+      this.sign = sign != null ? sign : 1;
+      this.exp = exp != null ? exp : 1;
+    }
+    CTATChemMultiplicationNode.prototype.clone = function() {
+      return new CTATChemMultiplicationNode(this.operator, this.factors.map(function(factor) {
+        return factor.clone();
+      }), this.parens, this.sign, this.exp);
+    };
+    CTATChemMultiplicationNode.prototype.toString = function(wrapSymbols) {
+      if (wrapSymbols == null) {
+        wrapSymbols = false;
+      }
+      return CTATChemMultiplicationNode.__super__.toString.call(this, this.factors.reduce(function(_this) {
+        return function(result, factor) {
+          var factorString, operator;
+          operator = factor.inverted() ? (factor.invert(), factor.setParens("DIVIDE", !!result), factorString = factor.toString(wrapSymbols), factor.invert(), "/") : (factor.setParens(_this.operator, !!result), /^[\d+-]/.test(factorString = factor.toString(wrapSymbols)) && /\d$/.test(result) ? "*" : "");
+          return "" + result + (result ? operator : "") + factorString;
+        };
+      }(this), this.factors[0].inverted() ? "1" : ""));
+    };
+    CTATChemMultiplicationNode.prototype.evaluate = function() {
+      return CTATChemMultiplicationNode.__super__.evaluate.call(this, this.factors.reduce(function(_this) {
+        return function(result, factor) {
+          return _this.applyOperator(result, factor.evaluate());
+        };
+      }(this), 1));
+    };
+    CTATChemMultiplicationNode.prototype.equals = function(node) {
+      return CTATChemMultiplicationNode.__super__.equals.call(this, node) && this.factors.length === node.factors.length && this.factors.every(function(factor, index) {
+        return factor.equals(node.factors[index]);
+      });
+    };
+    CTATChemMultiplicationNode.prototype.simplify = function(methods1) {
+      this.methods = methods1;
+      this.factors = this.factors.map(function(_this) {
+        return function(factor) {
+          return factor.simplify(_this.methods);
+        };
+      }(this));
+      return CTATChemMultiplicationNode.__super__.simplify.apply(this, arguments);
+    };
+    CTATChemMultiplicationNode.prototype.simpleFlatten = function() {
+      if (this.division()) {
+        this.factors[1].invert();
+      }
+      this.operator = "TIMES";
+      this.factors = this.factors.reduce(function(result, factor) {
+        if (factor.parented() || !factor.multiplication()) {
+          result.push(factor);
+        } else {
+          result.push.apply(result, factor.pushNegation().pushInversion().factors);
+        }
+        return result;
+      }, []);
+      return this;
+    };
+    CTATChemMultiplicationNode.prototype.flatten = function() {
+      this.simpleFlatten();
+      return this.popNegation();
+    };
+    CTATChemMultiplicationNode.prototype.computeConstants = function() {
+      var constant, constantIndex;
+      if ((constantIndex = this.factors.findIndex(function(term) {
+        return term.constant();
+      })) >= 0) {
+        constant = this.factors[constantIndex].evaluate();
+        this.factors = this.factors.filter(function(factor, index) {
+          return index <= constantIndex || !factor.constant() || (constant *= factor.evaluate()) && false;
+        });
+        if (constant === 1 && this.factors.length > 1) {
+          this.factors.splice(constantIndex, 1);
+        } else {
+          this.factors[constantIndex].set(constant);
+        }
+      }
+      if (this.factors.length > 1) {
+        return this;
+      } else {
+        return this.pushNegation().pushInversion().factors[0];
+      }
+    };
+    CTATChemMultiplicationNode.prototype.combineSimilar = function() {
+      var groups;
+      groups = [];
+      this.factors.forEach(function(factor) {
+        var group, ref, ref1, splitPair;
+        splitPair = factor.constant() ? [null, factor] : !factor.power() ? (factor = factor.powerOne(), [factor.base, factor.exponent]) : factor.exponent.constant() ? (factor.pushInversion(), [factor.base, factor.exponent]) : (factor.exponent = factor.exponent.multiplyOne(), [factor, factor.exponent.factors.shift()]);
+        if (group = groups.find(function(group) {
+          var ref;
+          return (ref = group[0]) != null ? ref.equals(splitPair[0]) : void 0;
+        })) {
+          return group[1] += ((ref = splitPair[1]) != null ? ref.evaluate() : void 0) || 1;
+        } else {
+          return groups.push([splitPair[0], ((ref1 = splitPair[1]) != null ? ref1.evaluate() : void 0) || 1]);
+        }
+      });
+      this.factors = groups.reduce(function(result, group) {
+        if (group[1] !== 0) {
+          group[1] = (new CTATChemConstantNode(group[1])).popNegation();
+          if (!group[0]) {
+            result.push(group[1]);
+          } else {
+            if (group[1].constant(1)) {
+              result.push(group[0]);
+            } else {
+              if (group[1].constant(-1)) {
+                result.push(group[0].invert());
+              } else {
+                if (!group[0].power()) {
+                  result.push((new CTATChemPowerNode("EXP", group[0], group[1])).popInversion());
+                } else {
+                  group[0].exponent.factors.unshift(group[1]);
+                  result.push(group[0]);
+                }
+              }
+            }
+          }
+        }
+        return result;
+      }, []);
+      if (this.factors.length > 1) {
+        return this;
+      } else {
+        if (this.factors.length === 1) {
+          return this.pushNegation().pushInversion().factors[0];
+        } else {
+          this.factors[0] = new CTATChemConstantNode(1);
+          return this.pushNegation().pushInversion().factors[0];
+        }
+      }
+    };
+    CTATChemMultiplicationNode.prototype.distribute = function() {
+      var directFactors, directTerms, invertedFactors, invertedTerms;
+      directFactors = this.factors.filter(function(factor) {
+        return !factor.inverted();
+      });
+      invertedFactors = this.factors.filter(function(factor) {
+        return factor.inverted();
+      });
+      if (this.distributedOrSingle(directFactors) && this.distributedOrSingle(invertedFactors) && !(this.single(directFactors) && invertedFactors.length && this.distributed(invertedFactors))) {
+        return this;
+      } else {
+        if (this.distributed(invertedFactors)) {
+          directTerms = this.distributeFactors(this.factors);
+          invertedTerms = [];
+        } else {
+          if (this.distributed(directFactors)) {
+            invertedTerms = this.distributeFactors(this.factors);
+            directTerms = [];
+          } else {
+            directTerms = this.distributeFactors(directFactors);
+            invertedTerms = this.distributeFactors(invertedFactors);
+          }
+        }
+        if (!invertedTerms.length) {
+          this.factors = [this.packTerms(directTerms)];
+        } else {
+          if (!directTerms.length) {
+            this.factors = [this.packTerms(invertedTerms).invert()];
+          } else {
+            this.factors = [this.packTerms(directTerms), this.packTerms(invertedTerms).invert()];
+          }
+        }
+        if (this.factors.length > 1) {
+          return this;
+        } else {
+          return this.pushNegation().pushInversion().factors[0];
+        }
+      }
+    };
+    CTATChemMultiplicationNode.prototype.distributedOrSingle = function(factors) {
+      return this.distributed(factors) || this.single(factors);
+    };
+    CTATChemMultiplicationNode.prototype.distributed = function(factors) {
+      return factors.every(function(factor) {
+        return !factor.addition();
+      });
+    };
+    CTATChemMultiplicationNode.prototype.single = function(factors) {
+      return factors.length === 1 && factors[0].addition();
+    };
+    CTATChemMultiplicationNode.prototype.distributeFactors = function(factors) {
+      var terms;
+      terms = !factors[0].addition() ? [[factors[0]]] : factors[0].terms.map(function(term) {
+        if (!term.multiplication()) {
+          return [term];
+        } else {
+          return term.pushNegation().factors;
+        }
+      });
+      factors.slice(1).forEach(function(newFactor) {
+        var ref;
+        if (!newFactor.addition()) {
+          if (terms.length === 1) {
+            if (!newFactor.multiplication()) {
+              return terms[0].push(newFactor);
+            } else {
+              return (ref = terms[0]).push.apply(ref, newFactor.pushNegation().factors);
+            }
+          } else {
+            return terms.forEach(function(term, index) {
+              var ref1;
+              if (!newFactor.multiplication()) {
+                return terms[index].push(newFactor.clone());
+              } else {
+                return (ref1 = terms[index]).push.apply(ref1, newFactor.pushNegation().factors.map(function(factor) {
+                  return factor.clone();
+                }));
+              }
+            });
+          }
+        } else {
+          if (terms.length === 1) {
+            return terms = newFactor.terms.map(function(newTerm) {
+              var term;
+              term = terms[0].map(function(factor) {
+                return factor.clone();
+              });
+              if (!newTerm.multiplication()) {
+                term.push(newTerm);
+              } else {
+                term.push.apply(term, newTerm.pushNegation().factors);
+              }
+              return term;
+            });
+          } else {
+            return terms = terms.reduce(function(result, term) {
+              result.push.apply(result, newFactor.terms.map(function(newTerm) {
+                var copyTerm;
+                copyTerm = term.map(function(factor) {
+                  return factor.clone();
+                });
+                if (!newTerm.multiplication()) {
+                  copyTerm.push(newTerm.clone());
+                } else {
+                  copyTerm.push.apply(copyTerm, newTerm.pushNegation().factors.map(function(factor) {
+                    return factor.clone();
+                  }));
+                }
+                return copyTerm;
+              }));
+              return result;
+            }, []);
+          }
+        }
+      });
+      return terms;
+    };
+    CTATChemMultiplicationNode.prototype.packTerms = function(terms) {
+      var methods;
+      methods = CTATChemTreeNode.diff(this.methods, ["flatten", "distribute"]);
+      return (new CTATChemAdditionNode("PLUS", terms.map(function(term) {
+        return (new CTATChemMultiplicationNode("TIMES", term)).popNegation().simplifyNode(methods);
+      }))).simplifyNode(methods);
+    };
+    CTATChemMultiplicationNode.prototype.removeIdentity = function(marked) {
+      var factors, zero;
+      if (marked == null) {
+        marked = false;
+      }
+      this.popNegation();
+      factors = this.factors.filter(function(factor) {
+        return !factor.constant(1, marked);
+      });
+      this.factors = factors.length ? factors : this.factors.slice(0, 1);
+      if ((zero = this.factors.find(function(factor) {
+        return factor.constant(0, marked);
+      })) && this.factors.every(function(factor) {
+        return !factor.inverted() && (!factor.power() || factor.exponent.constant());
+      })) {
+        this.factors = [zero];
+      }
+      if (this.factors.length > 1) {
+        return this;
+      } else {
+        return this.pushNegation().pushInversion().factors[0];
+      }
+    };
+    CTATChemMultiplicationNode.prototype.sort = function() {
+      this.spreadIdentity();
+      this.factors = this.factors.sort(function(node1, node2) {
+        return node1.compare(node2);
+      });
+      return this.stripIdentity();
+    };
+    CTATChemMultiplicationNode.prototype.spreadIdentity = function() {
+      this.factors = this.factors.map(function(factor) {
+        return factor.powerOne(true);
+      });
+      return this;
+    };
+    CTATChemMultiplicationNode.prototype.stripIdentity = function() {
+      this.factors = this.factors.map(function(factor) {
+        return factor.removeIdentity(true);
+      });
+      return this.popNegation();
+    };
+    CTATChemMultiplicationNode.prototype.multiplyOne = function(marked) {
+      if (marked == null) {
+        marked = false;
+      }
+      if (!this.factors[0].constant()) {
+        this.factors.unshift(new CTATChemConstantNode(1, marked));
+      }
+      return this.pushNegation();
+    };
+    CTATChemMultiplicationNode.prototype.compare = function(node, reverse) {
+      var nodefactors, value;
+      return (value = CTATChemMultiplicationNode.__super__.compare.apply(this, arguments)) || this.countVariables() - node.countVariables() || (nodefactors = node.factors.slice(0).reverse()) && this.factors.slice(0).reverse().some(function(factor, index) {
+        return value = factor.compare(nodefactors[index], reverse);
+      }) && value || this.compareSigns(node, reverse);
+    };
+    CTATChemMultiplicationNode.prototype.countVariables = function() {
+      return this.factors.reduce(function(result, factor) {
+        return result + factor.countVariables();
+      }, 0);
+    };
+    CTATChemMultiplicationNode.prototype.pushNegation = function() {
+      if (this.negated()) {
+        this.negate();
+        this.factors[0].negate();
+      }
+      return this;
+    };
+    CTATChemMultiplicationNode.prototype.popNegation = function() {
+      this.factors.forEach(function(_this) {
+        return function(factor) {
+          if (factor.negated()) {
+            _this.negate();
+            return factor.negate();
+          }
+        };
+      }(this));
+      return this;
+    };
+    CTATChemMultiplicationNode.prototype.pushInversion = function() {
+      if (this.inverted()) {
+        this.invert();
+        this.factors.forEach(function(factor) {
+          return factor.invert();
+        });
+      }
+      return this;
+    };
+    CTATChemMultiplicationNode.prototype.even = function() {
+      return !this.inverted() && this.factors.every(function(factor) {
+        return factor.integer();
+      }) && this.factors.some(function(factor) {
+        return factor.even();
+      });
+    };
+    CTATChemMultiplicationNode.prototype.getVariables = function() {
+      var vars;
+      vars = [];
+      this.factors.forEach(function(_this) {
+        return function(factor) {
+          return vars = vars.concat(factor.getVariables());
+        };
+      }(this));
+      return vars;
+    };
+    CTATChemMultiplicationNode.prototype.setVariable = function(varName, parsedValue) {
+      var i, results;
+      i = 0;
+      results = [];
+      while (i < this.factors.length) {
+        if (this.factors[i].operator === "VAR" && this.factors[i].variable === varName) {
+          this.factors[i] = parsedValue;
+        } else {
+          this.factors[i].setVariable(varName, parsedValue);
+        }
+        results.push(i++);
+      }
+      return results;
+    };
+    return CTATChemMultiplicationNode;
+  }(CTATChemTreeNode);
+  if (typeof module !== "undefined" && module !== null) {
+    module.exports = CTATChemMultiplicationNode;
+  } else {
+    this.CTATChemMultiplicationNode = CTATChemMultiplicationNode;
+  }
+}).call(this);
+goog.provide("CTATChemIntDivisionNode");
+goog.require("CTATChemTreeNode");
+(function() {
+  var CTATChemIntDivisionNode, extend = function(child, parent) {
+    for (var key in parent) {
+      if (hasProp.call(parent, key)) {
+        child[key] = parent[key];
+      }
+    }
+    function ctor() {
+      this.constructor = child;
+    }
+    ctor.prototype = parent.prototype;
+    child.prototype = new ctor;
+    child.__super__ = parent.prototype;
+    return child;
+  }, hasProp = {}.hasOwnProperty;
+  CTATChemIntDivisionNode = function(superClass) {
+    extend(CTATChemIntDivisionNode, superClass);
+    function CTATChemIntDivisionNode(operator, dividend, divisor1, parens, sign, exp) {
+      this.operator = operator;
+      this.dividend = dividend;
+      this.divisor = divisor1;
+      this.parens = parens != null ? parens : 0;
+      this.sign = sign != null ? sign : 1;
+      this.exp = exp != null ? exp : 1;
+    }
+    CTATChemIntDivisionNode.prototype.clone = function() {
+      return new CTATChemIntDivisionNode(this.operator, this.dividend.clone(), this.divisor.clone(), this.parens, this.sign, this.exp);
+    };
+    CTATChemIntDivisionNode.prototype.toString = function(wrapSymbols) {
+      if (wrapSymbols == null) {
+        wrapSymbols = false;
+      }
+      this.dividend.setParens(this.operator);
+      this.divisor.setParens(this.operator, true);
+      return CTATChemIntDivisionNode.__super__.toString.call(this, "" + this.dividend.toString(wrapSymbols) + CTATChemTreeNode.toOperatorString(this.operator) + this.divisor.toString(wrapSymbols));
+    };
+    CTATChemIntDivisionNode.prototype.evaluate = function() {
+      return CTATChemIntDivisionNode.__super__.evaluate.call(this, this.applyOperator(this.dividend.evaluate(), this.divisor.evaluate()));
+    };
+    CTATChemIntDivisionNode.prototype.equals = function(node) {
+      return CTATChemIntDivisionNode.__super__.equals.call(this, node) && this.dividend.equals(node.dividend) && this.divisor.equals(node.divisor);
+    };
+    CTATChemIntDivisionNode.prototype.simplify = function(methods) {
+      this.methods = methods;
+      this.dividend = this.dividend.simplify(this.methods);
+      this.divisor = this.divisor.simplify(this.methods);
+      return CTATChemIntDivisionNode.__super__.simplify.apply(this, arguments);
+    };
+    CTATChemIntDivisionNode.prototype.computeConstants = function() {
+      if (this.dividend.constant() && this.divisor.constant()) {
+        return new CTATChemConstantNode(this.evaluate());
+      } else {
+        return this;
+      }
+    };
+    CTATChemIntDivisionNode.prototype.removeIdentity = function(marked) {
+      if (marked == null) {
+        marked = false;
+      }
+      if (this.divisor.constant(1, marked)) {
+        if (!this.intDivision()) {
+          this.dividend = new CTATChemConstantNode(0, marked);
+        }
+        return this.pushNegation().pushInversion().dividend;
+      } else {
+        return this.popNegation();
+      }
+    };
+    CTATChemIntDivisionNode.prototype.compare = function(node, reverse) {
+      return CTATChemIntDivisionNode.__super__.compare.apply(this, arguments) || this.dividend.compare(node.dividend, reverse) || this.divisor.compare(node.divisor, reverse) || this.operator !== node.operator && (this.intDivision() && -1 || 1) || this.compareSigns(node, reverse);
+    };
+    CTATChemIntDivisionNode.prototype.countVariables = function() {
+      return this.dividend.countVariables() + divisor.countVariables();
+    };
+    CTATChemIntDivisionNode.prototype.pushNegation = function() {
+      if (this.intDivision() && this.negated()) {
+        this.negate();
+        this.dividend.negate();
+      }
+      return this;
+    };
+    CTATChemIntDivisionNode.prototype.pushInversion = function() {
+      if (this.intDivision() && this.inverted()) {
+        this.invert();
+        this.dividend.invert();
+      }
+      return this;
+    };
+    CTATChemIntDivisionNode.prototype.popNegation = function() {
+      if (this.divisor.negated()) {
+        this.divisor.negate();
+        if (this.intDivision()) {
+          this.dividend.negate();
+        }
+      }
+      return this;
+    };
+    CTATChemIntDivisionNode.prototype.even = function() {
+      return !this.inverted && this.operator === "REM" && this.dividend.even() && this.divisor.even();
+    };
+    CTATChemIntDivisionNode.prototype.getVariables = function() {
+      return this.dividend.getVariables().concat(this.divisor.getVariables());
+    };
+    CTATChemIntDivisionNode.prototype.setVariable = function(varName, parsedValue) {
+      if (this.dividend.operator === "VAR" && this.dividend.variable === varName) {
+        this.dividend = parsedValue;
+      } else {
+        this.dividend.setVariable(varName, parsedValue);
+      }
+      if (this.divisor.operator === "VAR" && this.divisor.variable === varName) {
+        return this.divisor = parsedValue;
+      } else {
+        return this.divisor.setVariable(varName, parsedValue);
+      }
+    };
+    return CTATChemIntDivisionNode;
+  }(CTATChemTreeNode);
+  if (typeof module !== "undefined" && module !== null) {
+    module.exports = CTATChemIntDivisionNode;
+  } else {
+    this.CTATChemIntDivisionNode = CTATChemIntDivisionNode;
+  }
+}).call(this);
+goog.provide("CTATChemUnaryNode");
+goog.require("CTATChemTreeNode");
+(function() {
+  var CTATChemUnaryNode, extend = function(child, parent) {
+    for (var key in parent) {
+      if (hasProp.call(parent, key)) {
+        child[key] = parent[key];
+      }
+    }
+    function ctor() {
+      this.constructor = child;
+    }
+    ctor.prototype = parent.prototype;
+    child.prototype = new ctor;
+    child.__super__ = parent.prototype;
+    return child;
+  }, hasProp = {}.hasOwnProperty;
+  CTATChemUnaryNode = function(superClass) {
+    extend(CTATChemUnaryNode, superClass);
+    function CTATChemUnaryNode(operator, base, parens, sign, exp) {
+      this.operator = operator;
+      this.base = base;
+      this.parens = parens != null ? parens : 0;
+      this.sign = sign != null ? sign : 1;
+      this.exp = exp != null ? exp : 1;
+    }
+    CTATChemUnaryNode.prototype.clone = function() {
+      return new CTATChemUnaryNode(this.operator, this.base, this.parens, this.sign, this.exp);
+    };
+    CTATChemUnaryNode.prototype.toString = function(wrapSymbols) {
+      if (wrapSymbols == null) {
+        wrapSymbols = false;
+      }
+      this.base.setParens(this.operator);
+      return CTATChemUnaryNode.__super__.toString.call(this, "" + CTATChemTreeNode.toOperatorString(this.operator) + this.base.toString(wrapSymbols));
+    };
+    CTATChemUnaryNode.prototype.evaluate = function() {
+      return CTATChemUnaryNode.__super__.evaluate.call(this, this.applyOperator(this.base.evaluate()));
+    };
+    CTATChemUnaryNode.prototype.equals = function(node) {
+      return CTATChemUnaryNode.__super__.equals.call(this, node) && this.base.equals(node.base);
+    };
+    CTATChemUnaryNode.prototype.simplify = function(methods) {
+      this.methods = methods;
+      this.base = this.base.simplify(this.methods);
+      return CTATChemUnaryNode.__super__.simplify.apply(this, arguments);
+    };
+    CTATChemUnaryNode.prototype.flatten = function() {
+      if (this.negation()) {
+        this.negate();
+        this.operator = "UPLUS";
+      }
+      return this.pushNegation().pushInversion().base;
+    };
+    CTATChemUnaryNode.prototype.compare = function(node, reverse) {
+      return node.unary() && this.base.compare(node.base, reverse) || CTATChemUnaryNode.__super__.compare.apply(this, arguments) || this.compareSigns(node, reverse);
+    };
+    CTATChemUnaryNode.prototype.countVariables = function() {
+      return this.base.countVariables();
+    };
+    CTATChemUnaryNode.prototype.pushNegation = function() {
+      if (this.negated()) {
+        this.negate();
+        this.base.negate();
+      }
+      return this;
+    };
+    CTATChemUnaryNode.prototype.pushInversion = function() {
+      if (this.inverted()) {
+        this.invert();
+        this.base.invert();
+      }
+      return this;
+    };
+    CTATChemUnaryNode.prototype.constant = function(value, marked) {
+      if (marked == null) {
+        marked = false;
+      }
+      return this.base.constant(value, marked);
+    };
+    CTATChemUnaryNode.prototype.getVariables = function() {
+      return this.base.getVariables();
+    };
+    CTATChemUnaryNode.prototype.setVariable = function(varName, parsedValue) {
+      if (this.base.operator === "VAR" && this.base.variable === varName) {
+        return this.base = parsedValue;
+      } else {
+        return this.base.setVariable(varName, parsedValue);
+      }
+    };
+    return CTATChemUnaryNode;
+  }(CTATChemTreeNode);
+  if (typeof module !== "undefined" && module !== null) {
+    module.exports = CTATChemUnaryNode;
+  } else {
+    this.CTATChemUnaryNode = CTATChemUnaryNode;
+  }
+}).call(this);
+goog.provide("CTATChemPowerNode");
+goog.require("CTATChemTreeNode");
+(function() {
+  var CTATChemPowerNode, extend = function(child, parent) {
+    for (var key in parent) {
+      if (hasProp.call(parent, key)) {
+        child[key] = parent[key];
+      }
+    }
+    function ctor() {
+      this.constructor = child;
+    }
+    ctor.prototype = parent.prototype;
+    child.prototype = new ctor;
+    child.__super__ = parent.prototype;
+    return child;
+  }, hasProp = {}.hasOwnProperty;
+  CTATChemPowerNode = function(superClass) {
+    extend(CTATChemPowerNode, superClass);
+    function CTATChemPowerNode(operator, base1, exponent1, parens, sign, exp) {
+      this.operator = operator;
+      this.base = base1;
+      this.exponent = exponent1;
+      this.parens = parens != null ? parens : 0;
+      this.sign = sign != null ? sign : 1;
+      this.exp = exp != null ? exp : 1;
+    }
+    CTATChemPowerNode.prototype.clone = function() {
+      return new CTATChemPowerNode(this.operator, this.base.clone(), this.exponent.clone(), this.parens, this.sign, this.exp);
+    };
+    CTATChemPowerNode.prototype.toString = function(wrapSymbols) {
+      if (wrapSymbols == null) {
+        wrapSymbols = false;
+      }
+      this.base.setParens(this.operator);
+      this.exponent.setParens(this.operator);
+      return CTATChemPowerNode.__super__.toString.call(this, "" + this.base.toString(wrapSymbols) + CTATChemTreeNode.toOperatorString(this.operator) + this.exponent.toString(wrapSymbols));
+    };
+    CTATChemPowerNode.prototype.evaluate = function() {
+      return CTATChemPowerNode.__super__.evaluate.call(this, this.applyOperator(this.base.evaluate(), this.exponent.evaluate()));
+    };
+    CTATChemPowerNode.prototype.equals = function(node) {
+      return CTATChemPowerNode.__super__.equals.call(this, node) && this.base.equals(node.base) && this.exponent.equals(node.exponent);
+    };
+    CTATChemPowerNode.prototype.simplify = function(methods1) {
+      this.methods = methods1;
+      this.base = this.base.simplify(this.methods);
+      this.exponent = this.exponent.simplify(this.methods);
+      return CTATChemPowerNode.__super__.simplify.apply(this, arguments);
+    };
+    CTATChemPowerNode.prototype.flatten = function() {
+      var factors, methods;
+      if (this.root()) {
+        this.exponent.invert();
+        this.operator = "EXP";
+      }
+      this.popNegation().popInversion();
+      if (this.base.power()) {
+        methods = CTATChemTreeNode.diff(this.methods, ["flatten"]);
+        factors = !this.base.exponent.multiplication() ? [this.base.exponent] : this.base.exponent.pushNegation().pushInversion().factors;
+        if (!this.exponent.multiplication()) {
+          factors.push(this.exponent);
+        } else {
+          factors.push.apply(factors, this.exponent.pushNegation().pushInversion().factors);
+        }
+        this.base.exponent = (new CTATChemMultiplicationNode("TIMES", factors)).simplifyNode(methods);
+        return this.pushBaseNegation().pushBaseInversion().base;
+      } else {
+        return this;
+      }
+    };
+    CTATChemPowerNode.prototype.computeConstants = function() {
+      if (this.base.constant() && (this.exponent.constant() || this.exponent.multiplication() && this.exponent.factors[0].constant())) {
+        if (this.exponent.constant()) {
+          this.base = new CTATChemConstantNode(this.evaluate());
+          this.exponent = null;
+        } else {
+          this.base = new CTATChemConstantNode((new CTATChemPowerNode("EXP", this.base, this.exponent.factors.shift())).evaluate());
+          if (this.exponent.factors.length === 1) {
+            this.exponent = this.exponent.pushNegation().pushInversion().factors[0];
+          }
+        }
+        if (this.exponent) {
+          return this;
+        } else {
+          return this.pushBaseNegation().pushBaseInversion().base;
+        }
+      } else {
+        return this;
+      }
+    };
+    CTATChemPowerNode.prototype.powerOne = function(marked) {
+      if (marked == null) {
+        marked = false;
+      }
+      this.exponent = this.exponent.multiplyOne(marked);
+      return this.pushInversion();
+    };
+    CTATChemPowerNode.prototype.expand = function() {
+      var exponent, factors, i, j, ref;
+      if (this.base.addition() && (this.exponent.integer() && this.exponent.value > 1 || this.exponent.multiplication() && this.exponent.factors[0].integer() && this.exponent.factors[0].value > 1)) {
+        if (this.exponent.integer()) {
+          exponent = this.exponent;
+          this.exponent = null;
+        } else {
+          exponent = this.exponent.factors.shift();
+          if (this.exponent.factors.length === 1) {
+            this.exponent = this.exponent.pushNegation().pushInversion().factors[0];
+          }
+        }
+        factors = [this.base];
+        for (i = j = 1, ref = exponent.evaluate();1 <= ref ? j < ref : j > ref;i = 1 <= ref ? ++j : --j) {
+          factors.push(this.base.clone());
+        }
+        this.base = (new CTATChemMultiplicationNode("TIMES", factors)).simplifyNode(["distribute"]);
+        if (this.exponent) {
+          return this;
+        } else {
+          return this.pushBaseNegation().pushBaseInversion().base;
+        }
+      } else {
+        return this;
+      }
+    };
+    CTATChemPowerNode.prototype.distribute = function() {
+      var factors, pairs;
+      if (this.base.multiplication() || this.exponent.addition()) {
+        factors = this.base.multiplication() ? this.base.pushNegation().pushInversion().factors : [this.base];
+        pairs = !this.exponent.addition() ? factors.map(function(_this) {
+          return function(factor) {
+            return [factor, _this.exponent.clone()];
+          };
+        }(this)) : factors.reduce(function(_this) {
+          return function(result, factor) {
+            result.push.apply(result, _this.exponent.terms.map(function(term) {
+              return [factor.clone(), term.clone()];
+            }));
+            return result;
+          };
+        }(this), []);
+        this.base = this.packFactors(pairs);
+        return this.pushBaseNegation().pushBaseInversion().base;
+      } else {
+        return this;
+      }
+    };
+    CTATChemPowerNode.prototype.packFactors = function(pairs) {
+      var methods;
+      methods = CTATChemTreeNode.diff(this.methods, ["flatten"]);
+      return new CTATChemMultiplicationNode("TIMES", pairs.map(function(arg) {
+        var base, exponent;
+        base = arg[0], exponent = arg[1];
+        return (new CTATChemPowerNode("EXP", base, exponent)).simplifyNode(methods);
+      }));
+    };
+    CTATChemPowerNode.prototype.removeIdentity = function(marked) {
+      if (marked == null) {
+        marked = false;
+      }
+      this.popInversion();
+      if (this.exponent.constant(0, marked)) {
+        this.base = new CTATChemConstantNode(1, marked);
+        return this.pushBaseNegation().base;
+      } else {
+        if (this.base.constant(0, marked)) {
+          return this.pushBaseInversion().base;
+        } else {
+          if (this.exponent.constant(1, marked)) {
+            return this.pushBaseNegation().pushBaseInversion().base;
+          } else {
+            this.exponent = this.exponent.removeIdentity(marked);
+            return this;
+          }
+        }
+      }
+    };
+    CTATChemPowerNode.prototype.compare = function(node, reverse) {
+      return CTATChemPowerNode.__super__.compare.apply(this, arguments) || (this.countVariables() - node.countVariables()) * (reverse ? -1 : 1) || this.exponent.compare(node.exponent, reverse) || this.base.compare(node.base, reverse) || this.compareSigns(node, reverse);
+    };
+    CTATChemPowerNode.prototype.countVariables = function() {
+      return this.base.countVariables() * (this.exponent.constant() ? Math.abs(this.exponent.evaluate()) : Infinity);
+    };
+    CTATChemPowerNode.prototype.pushBaseNegation = function() {
+      if (this.negated()) {
+        this.negate();
+        this.base.negate();
+      }
+      return this;
+    };
+    CTATChemPowerNode.prototype.pushInversion = function() {
+      if (this.inverted()) {
+        this.invert();
+        this.exponent.negate();
+      }
+      return this;
+    };
+    CTATChemPowerNode.prototype.pushBaseInversion = function() {
+      if (this.inverted()) {
+        this.invert();
+        this.base.invert();
+      }
+      return this;
+    };
+    CTATChemPowerNode.prototype.popNegation = function() {
+      if (this.base.negated() && this.exponent.constant()) {
+        this.base.negate();
+        if (!this.exponent.even()) {
+          this.negate();
+        }
+      }
+      return this;
+    };
+    CTATChemPowerNode.prototype.popInversion = function() {
+      if (this.exponent.negated()) {
+        this.invert();
+        this.exponent.negate();
+      }
+      if (this.base.inverted()) {
+        this.invert();
+        this.base.invert();
+      }
+      return this;
+    };
+    CTATChemPowerNode.prototype.even = function() {
+      return !this.inverted() && this.base.even() && this.exponent.integer();
+    };
+    CTATChemPowerNode.prototype.getVariables = function() {
+      return this.base.getVariables().concat(this.exponent.getVariables());
+    };
+    CTATChemPowerNode.prototype.setVariable = function(varName, parsedValue) {
+      if (this.base.operator === "VAR" && this.base.variable === varName) {
+        this.base = parsedValue;
+      } else {
+        this.base.setVariable(varName, parsedValue);
+      }
+      if (this.exponent.operator === "VAR" && this.exponent.variable === varName) {
+        return this.exponent = parsedValue;
+      } else {
+        return this.exponent.setVariable(varName, parsedValue);
+      }
+    };
+    return CTATChemPowerNode;
+  }(CTATChemTreeNode);
+  if (typeof module !== "undefined" && module !== null) {
+    module.exports = CTATChemPowerNode;
+  } else {
+    this.CTATChemPowerNode = CTATChemPowerNode;
+  }
+}).call(this);
+goog.provide("CTATChemVariableNode");
+goog.require("CTATChemTreeNode");
+(function() {
+  var CTATChemVariableNode, extend = function(child, parent) {
+    for (var key in parent) {
+      if (hasProp.call(parent, key)) {
+        child[key] = parent[key];
+      }
+    }
+    function ctor() {
+      this.constructor = child;
+    }
+    ctor.prototype = parent.prototype;
+    child.prototype = new ctor;
+    child.__super__ = parent.prototype;
+    return child;
+  }, hasProp = {}.hasOwnProperty;
+  CTATChemVariableNode = function(superClass) {
+    extend(CTATChemVariableNode, superClass);
+    function CTATChemVariableNode(variableTable, variable, parens, sign, exp, symDelim) {
+      this.variableTable = variableTable;
+      this.variable = variable;
+      this.parens = parens != null ? parens : 0;
+      this.sign = sign != null ? sign : 1;
+      this.exp = exp != null ? exp : 1;
+      this.symDelim = symDelim != null ? symDelim : "";
+      this.operator = "VAR";
+    }
+    CTATChemVariableNode.prototype.clone = function() {
+      return new CTATChemVariableNode(this.variableTable, this.variable, this.parens, this.sign, this.exp);
+    };
+    CTATChemVariableNode.prototype.toString = function(wrapSymbols) {
+      if (wrapSymbols == null) {
+        wrapSymbols = false;
+      }
+      return CTATChemVariableNode.__super__.toString.call(this, this.variable, this.symDelim, wrapSymbols);
+    };
+    CTATChemVariableNode.prototype.evaluate = function() {
+      var ref;
+      return CTATChemVariableNode.__super__.evaluate.call(this, ((ref = this.variableTable) != null ? ref.get(this.variable) : void 0) || function() {
+        try {
+          return eval(this.variable);
+        } catch (_error) {
+          return NaN;
+        }
+      }.call(this));
+    };
+    CTATChemVariableNode.prototype.equals = function(node) {
+      return CTATChemVariableNode.__super__.equals.call(this, node) && this.variable === node.variable;
+    };
+    CTATChemVariableNode.prototype.compare = function(node, reverse) {
+      reverse = reverse != null ? -1 : 1;
+      return CTATChemVariableNode.__super__.compare.apply(this, arguments) || this.variable > node.variable && reverse || this.variable < node.variable && -reverse || this.compareSigns(node, reverse);
+    };
+    CTATChemVariableNode.prototype.countVariables = function() {
+      return 1;
+    };
+    CTATChemVariableNode.prototype.getVariables = function() {
+      return [this.variable];
+    };
+    return CTATChemVariableNode;
+  }(CTATChemTreeNode);
+  if (typeof module !== "undefined" && module !== null) {
+    module.exports = CTATChemVariableNode;
+  } else {
+    this.CTATChemVariableNode = CTATChemVariableNode;
+  }
+}).call(this);
+goog.provide("CTATChemConstantNode");
+goog.require("CTATChemTreeNode");
+(function() {
+  var CTATChemConstantNode, extend = function(child, parent) {
+    for (var key in parent) {
+      if (hasProp.call(parent, key)) {
+        child[key] = parent[key];
+      }
+    }
+    function ctor() {
+      this.constructor = child;
+    }
+    ctor.prototype = parent.prototype;
+    child.prototype = new ctor;
+    child.__super__ = parent.prototype;
+    return child;
+  }, hasProp = {}.hasOwnProperty;
+  CTATChemConstantNode = function(superClass) {
+    extend(CTATChemConstantNode, superClass);
+    function CTATChemConstantNode(value1, marked1, parens, sign, exp) {
+      this.value = value1;
+      this.marked = marked1 != null ? marked1 : false;
+      this.parens = parens != null ? parens : 0;
+      this.sign = sign != null ? sign : 1;
+      this.exp = exp != null ? exp : 1;
+      this.operator = "CONST";
+    }
+    CTATChemConstantNode.prototype.clone = function() {
+      return new CTATChemConstantNode(this.value, this.marked, this.parens, this.sign, this.exp);
+    };
+    CTATChemConstantNode.prototype.toString = function() {
+      return CTATChemConstantNode.__super__.toString.call(this, this.value.toString());
+    };
+    CTATChemConstantNode.prototype.evaluate = function() {
+      return CTATChemConstantNode.__super__.evaluate.call(this, this.value);
+    };
+    CTATChemConstantNode.prototype.equals = function(node) {
+      return CTATChemConstantNode.__super__.equals.call(this, node) && this.value === node.value;
+    };
+    CTATChemConstantNode.prototype.multiplyOne = function() {
+      return this;
+    };
+    CTATChemConstantNode.prototype.powerOne = function() {
+      return this;
+    };
+    CTATChemConstantNode.prototype.compare = function(node, reverse) {
+      reverse = reverse != null ? 1 : -1;
+      return CTATChemConstantNode.__super__.compare.apply(this, arguments) || Math.sign(Math.abs(this.evaluate()) - Math.abs(node.evaluate())) * reverse || this.compareSigns(node, reverse);
+    };
+    CTATChemConstantNode.prototype.popNegation = function() {
+      if (this.value < 0) {
+        this.negate();
+        this.value = -this.value;
+      }
+      return this;
+    };
+    CTATChemConstantNode.prototype.constant = function(value, marked) {
+      if (marked == null) {
+        marked = false;
+      }
+      return value == null || this.evaluate() === value && this.marked === marked;
+    };
+    CTATChemConstantNode.prototype.integer = function() {
+      return Math.floor(this.evaluate()) === this.value;
+    };
+    CTATChemConstantNode.prototype.even = function() {
+      return this.evaluate() % 2 === 0;
+    };
+    CTATChemConstantNode.prototype.set = function(value) {
+      this.exp = 1;
+      this.value = Math.abs(value);
+      return this.sign = Math.sign(value);
+    };
+    return CTATChemConstantNode;
+  }(CTATChemTreeNode);
+  if (typeof module !== "undefined" && module !== null) {
+    module.exports = CTATChemConstantNode;
+  } else {
+    this.CTATChemConstantNode = CTATChemConstantNode;
+  }
+}).call(this);
+goog.provide("CTATChemGrammar");
+goog.require("CTATChemTreeNode");
+goog.require("CTATChemRelationNode");
+goog.require("CTATChemAdditionNode");
+goog.require("CTATChemMultiplicationNode");
+goog.require("CTATChemIntDivisionNode");
+goog.require("CTATChemUnaryNode");
+goog.require("CTATChemPowerNode");
+goog.require("CTATChemVariableNode");
+goog.require("CTATChemConstantNode");
+var CTATChemGrammar = function() {
+  var o = function(k, v, o, l) {
+    for (o = o || {}, l = k.length;l--;o[k[l]] = v) {
+    }
+    return o;
+  }, $V0 = [1, 6], $V1 = [1, 7], $V2 = [1, 11], $V3 = [1, 12], $V4 = [1, 13], $V5 = [1, 14], $V6 = [1, 15], $V7 = [1, 23], $V8 = [1, 24], $V9 = [5, 7, 8, 9, 10, 11, 12, 13, 15, 30], $Va = [1, 25], $Vb = [1, 26], $Vc = [1, 29], $Vd = [1, 30], $Ve = [5, 7, 8, 9, 10, 11, 12, 13, 15, 16, 18, 21, 22, 28, 29, 30, 31, 32, 33], $Vf = [1, 34], $Vg = [5, 7, 8, 9, 10, 11, 12, 13, 15, 16, 18, 21, 22, 25, 28, 29, 30, 31, 32, 33], $Vh = [1, 37], $Vi = [1, 38], $Vj = [5, 7, 8, 9, 10, 11, 12, 13, 15, 16, 18, 21, 
+  22, 25, 27, 28, 29, 30, 31, 32, 33];
+  var parser = {trace:function trace() {
+  }, yy:{}, symbols_:{"error":2, "expression":3, "relational":4, "EOF":5, "arithmetic":6, "LESS":7, "GREATER":8, "LESSEQUAL":9, "GREATEREQUAL":10, "EQUAL":11, "NOTEQUAL":12, "PLUS":13, "term":14, "MINUS":15, "TIMES":16, "signedunitfactor":17, "DIVIDE":18, "unitfactor":19, "factor":20, "IDIVIDE":21, "REM":22, "signedfactor":23, "unit":24, "UNIT":25, "atom":26, "EXP":27, "SQRT":28, "LPAREN":29, "RPAREN":30, "VARIABLE":31, "NUMBER":32, "SUBSTANCE":33, "$accept":0, "$end":1}, terminals_:{2:"error", 5:"EOF", 
+  7:"LESS", 8:"GREATER", 9:"LESSEQUAL", 10:"GREATEREQUAL", 11:"EQUAL", 12:"NOTEQUAL", 13:"PLUS", 15:"MINUS", 16:"TIMES", 18:"DIVIDE", 21:"IDIVIDE", 22:"REM", 25:"UNIT", 27:"EXP", 28:"SQRT", 29:"LPAREN", 30:"RPAREN", 31:"VARIABLE", 32:"NUMBER", 33:"SUBSTANCE"}, productions_:[0, [3, 2], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 3], [4, 1], [6, 3], [6, 3], [6, 1], [14, 3], [14, 3], [14, 2], [14, 2], [14, 3], [14, 3], [14, 1], [17, 2], [17, 2], [17, 1], [17, 1], [23, 2], [23, 2], [23, 1], [19, 2], 
+  [24, 1], [20, 3], [20, 2], [20, 1], [26, 3], [26, 1], [26, 1], [26, 1]], performAction:function anonymous(yytext, yyleng, yylineno, yy, yystate, $$, _$) {
+    var $0 = $$.length - 1;
+    switch(yystate) {
+      case 1:
+        return $$[$0 - 1];
+        break;
+      case 2:
+        this.$ = new yy.CTATChemRelationNode("LESS", $$[$0 - 2], $$[$0]);
+        break;
+      case 3:
+        this.$ = new yy.CTATChemRelationNode("GREATER", $$[$0 - 2], $$[$0]);
+        break;
+      case 4:
+        this.$ = new yy.CTATChemRelationNode("LESSEQUAL", $$[$0 - 2], $$[$0]);
+        break;
+      case 5:
+        this.$ = new yy.CTATChemRelationNode("GREATEREQUAL", $$[$0 - 2], $$[$0]);
+        break;
+      case 6:
+        this.$ = new yy.CTATChemRelationNode("EQUAL", $$[$0 - 2], $$[$0]);
+        break;
+      case 7:
+        this.$ = new yy.CTATChemRelationNode("NOTEQUAL", $$[$0 - 2], $$[$0]);
+        break;
+      case 8:
+      ;
+      case 11:
+      ;
+      case 18:
+      ;
+      case 21:
+      ;
+      case 22:
+      ;
+      case 25:
+      ;
+      case 30:
         this.$ = $$[$0];
         break;
       case 9:
-        this.$ = $$[$0 - 1].addParens();
+        this.$ = new yy.CTATChemAdditionNode("PLUS", [$$[$0 - 2], $$[$0]]);
         break;
       case 10:
-        this.$ = new yy.CTATLogicVariableNode(yy.variableTable, yytext);
-        break;
-      case 11:
-        this.$ = new yy.CTATLogicConstantNode(true, yytext);
+        this.$ = new yy.CTATChemAdditionNode("MINUS", [$$[$0 - 2], $$[$0]]);
         break;
       case 12:
-        this.$ = new yy.CTATLogicConstantNode(false, yytext);
+        this.$ = new yy.CTATChemMultiplicationNode("TIMES", [$$[$0 - 2], $$[$0]]);
+        break;
+      case 13:
+        this.$ = new yy.CTATChemMultiplicationNode("DIVIDE", [$$[$0 - 2], $$[$0]]);
+        break;
+      case 14:
+      ;
+      case 15:
+        this.$ = new yy.CTATChemMultiplicationNode("ITIMES", [$$[$0 - 1], $$[$0]]);
+        break;
+      case 16:
+        this.$ = new yy.CTATChemIntDivisionNode("IDIVIDE", $$[$0 - 2], $$[$0]);
+        break;
+      case 17:
+        this.$ = new yy.CTATChemIntDivisionNode("REM", $$[$0 - 2], $$[$0]);
+        break;
+      case 19:
+      ;
+      case 23:
+        this.$ = new yy.CTATChemUnaryNode("UPLUS", $$[$0]);
+        break;
+      case 20:
+      ;
+      case 24:
+        this.$ = new yy.CTATChemUnaryNode("UMINUS", $$[$0]);
+        break;
+      case 26:
+        this.$ = $$[$0 - 1].setUnit($$[$0]);
+        break;
+      case 27:
+        this.$ = new yy.CTATChemVariableNode(yy.variableTable, yytext.replace(/\#/g, ""), 0, 1, 1, "#");
+        break;
+      case 28:
+        this.$ = new yy.CTATChemPowerNode("EXP", $$[$0 - 2], $$[$0]);
+        break;
+      case 29:
+        this.$ = new yy.CTATChemPowerNode("ROOT", $$[$0], 2);
+        break;
+      case 31:
+        this.$ = $$[$0 - 1];
+        break;
+      case 32:
+        this.$ = new yy.CTATChemVariableNode(yy.variableTable, yytext);
+        break;
+      case 33:
+        this.$ = new yy.CTATChemConstantNode(Number(yytext));
+        break;
+      case 34:
+        this.$ = new yy.CTATChemVariableNode(yy.variableTable, yytext.replace(/\$/g, ""), 0, 1, 1, "$");
         break;
     }
-  }, table:[{3:1, 4:2, 11:$V0, 12:4, 13:$V1, 15:$V2, 16:$V3, 17:$V4}, {1:[3]}, {5:[1, 9], 6:$V5, 7:$V6, 8:$V7, 9:$V8, 10:$V9}, {4:15, 11:$V0, 12:4, 13:$V1, 15:$V2, 16:$V3, 17:$V4}, o($Va, [2, 8]), {4:16, 11:$V0, 12:4, 13:$V1, 15:$V2, 16:$V3, 17:$V4}, o($Va, [2, 10]), o($Va, [2, 11]), o($Va, [2, 12]), {1:[2, 1]}, {4:17, 11:$V0, 12:4, 13:$V1, 15:$V2, 16:$V3, 17:$V4}, {4:18, 11:$V0, 12:4, 13:$V1, 15:$V2, 16:$V3, 17:$V4}, {4:19, 11:$V0, 12:4, 13:$V1, 15:$V2, 16:$V3, 17:$V4}, {4:20, 11:$V0, 12:4, 13:$V1, 
-  15:$V2, 16:$V3, 17:$V4}, {4:21, 11:$V0, 12:4, 13:$V1, 15:$V2, 16:$V3, 17:$V4}, o($Va, [2, 7]), {6:$V5, 7:$V6, 8:$V7, 9:$V8, 10:$V9, 14:[1, 22]}, o($Va, [2, 2]), o([5, 7, 8, 9, 10, 14], [2, 3], {6:$V5}), o([5, 8, 9, 10, 14], [2, 4], {6:$V5, 7:$V6}), o([5, 10, 14], [2, 5], {6:$V5, 7:$V6, 8:$V7, 9:$V8}), o([5, 14], [2, 6], {6:$V5, 7:$V6, 8:$V7, 9:$V8, 10:$V9}), o($Va, [2, 9])], defaultActions:{9:[2, 1]}, parseError:function parseError(str, hash) {
+  }, table:[{3:1, 4:2, 6:3, 13:$V0, 14:4, 15:$V1, 17:5, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, {1:[3]}, {5:[1, 16]}, {5:[2, 8], 7:[1, 17], 8:[1, 18], 9:[1, 19], 10:[1, 20], 11:[1, 21], 12:[1, 22], 13:$V7, 15:$V8}, o($V9, [2, 11], {26:10, 19:27, 20:28, 16:$Va, 18:$Vb, 21:$Vc, 22:$Vd, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}), o($Ve, [2, 18]), {13:$V0, 15:$V1, 17:31, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, {13:$V0, 15:$V1, 17:32, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 
+  31:$V4, 32:$V5, 33:$V6}, o($Ve, [2, 21]), o($Ve, [2, 22], {24:33, 25:$Vf}), o($Vg, [2, 30], {27:[1, 35]}), {13:$Vh, 15:$Vi, 20:39, 23:36, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, {6:40, 13:$V0, 14:4, 15:$V1, 17:5, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, o($Vj, [2, 32]), o($Vj, [2, 33]), o($Vj, [2, 34]), {1:[2, 1]}, {6:41, 13:$V0, 14:4, 15:$V1, 17:5, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, {6:42, 13:$V0, 14:4, 15:$V1, 17:5, 19:8, 20:9, 26:10, 28:$V2, 
+  29:$V3, 31:$V4, 32:$V5, 33:$V6}, {6:43, 13:$V0, 14:4, 15:$V1, 17:5, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, {6:44, 13:$V0, 14:4, 15:$V1, 17:5, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, {6:45, 13:$V0, 14:4, 15:$V1, 17:5, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, {6:46, 13:$V0, 14:4, 15:$V1, 17:5, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, {13:$V0, 14:47, 15:$V1, 17:5, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, 
+  {13:$V0, 14:48, 15:$V1, 17:5, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, {13:$V0, 15:$V1, 17:49, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, {13:$V0, 15:$V1, 17:50, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, o($Ve, [2, 14]), o($Ve, [2, 15], {24:33, 25:$Vf}), {13:$V0, 15:$V1, 17:51, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, {13:$V0, 15:$V1, 17:52, 19:8, 20:9, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, o($Ve, [2, 19]), o($Ve, 
+  [2, 20]), o($Ve, [2, 26]), o($Ve, [2, 27]), {13:$Vh, 15:$Vi, 20:39, 23:53, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, o($Vg, [2, 29]), {13:$Vh, 15:$Vi, 20:39, 23:54, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, {13:$Vh, 15:$Vi, 20:39, 23:55, 26:10, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}, o($Vg, [2, 25]), {13:$V7, 15:$V8, 30:[1, 56]}, {5:[2, 2], 13:$V7, 15:$V8}, {5:[2, 3], 13:$V7, 15:$V8}, {5:[2, 4], 13:$V7, 15:$V8}, {5:[2, 5], 13:$V7, 15:$V8}, {5:[2, 6], 13:$V7, 15:$V8}, {5:[2, 7], 13:$V7, 
+  15:$V8}, o($V9, [2, 9], {26:10, 19:27, 20:28, 16:$Va, 18:$Vb, 21:$Vc, 22:$Vd, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}), o($V9, [2, 10], {26:10, 19:27, 20:28, 16:$Va, 18:$Vb, 21:$Vc, 22:$Vd, 28:$V2, 29:$V3, 31:$V4, 32:$V5, 33:$V6}), o($Ve, [2, 12]), o($Ve, [2, 13]), o($Ve, [2, 16]), o($Ve, [2, 17]), o($Vg, [2, 28]), o($Vg, [2, 23]), o($Vg, [2, 24]), o($Vj, [2, 31])], defaultActions:{16:[2, 1]}, parseError:function parseError(str, hash) {
     if (hash.recoverable) {
       this.trace(str);
     } else {
@@ -22347,137 +26347,107 @@ var CTATLogicGrammar = function() {
         case 0:
           break;
         case 1:
-          return 13;
+          return 29;
           break;
         case 2:
-          return 14;
+          return 30;
           break;
         case 3:
-          return 10;
+          return 27;
           break;
         case 4:
-          return 10;
+          return 27;
           break;
         case 5:
-          return 10;
+          return 28;
           break;
         case 6:
-          return 10;
+          return 28;
           break;
         case 7:
-          return 10;
+          return 16;
           break;
         case 8:
-          return 10;
+          return 16;
           break;
         case 9:
-          return 9;
+          return 21;
           break;
         case 10:
-          return 9;
+          return 18;
           break;
         case 11:
-          return 9;
+          return 18;
           break;
         case 12:
-          return 9;
+          return 22;
           break;
         case 13:
-          return 9;
-          break;
-        case 14:
-          return 6;
-          break;
-        case 15:
-          return 6;
-          break;
-        case 16:
-          return 6;
-          break;
-        case 17:
-          return 6;
-          break;
-        case 18:
-          return 6;
-          break;
-        case 19:
-          return 6;
-          break;
-        case 20:
-          return 7;
-          break;
-        case 21:
-          return 7;
-          break;
-        case 22:
-          return 7;
-          break;
-        case 23:
-          return 7;
-          break;
-        case 24:
-          return 7;
-          break;
-        case 25:
-          return 8;
-          break;
-        case 26:
-          return 8;
-          break;
-        case 27:
-          return 8;
-          break;
-        case 28:
-          return 8;
-          break;
-        case 29:
-          return 8;
-          break;
-        case 30:
-          return 11;
-          break;
-        case 31:
-          return 11;
-          break;
-        case 32:
-          return 11;
-          break;
-        case 33:
-          return 11;
-          break;
-        case 34:
-          return 16;
-          break;
-        case 35:
-          return 16;
-          break;
-        case 36:
-          return 16;
-          break;
-        case 37:
-          return 16;
-          break;
-        case 38:
-          return 17;
-          break;
-        case 39:
-          return 17;
-          break;
-        case 40:
-          return 17;
-          break;
-        case 41:
-          return 17;
-          break;
-        case 42:
           return 15;
           break;
-        case 43:
+        case 14:
+          return 13;
+          break;
+        case 15:
+          return 9;
+          break;
+        case 16:
+          return 9;
+          break;
+        case 17:
+          return 10;
+          break;
+        case 18:
+          return 10;
+          break;
+        case 19:
+          return 7;
+          break;
+        case 20:
+          return 8;
+          break;
+        case 21:
+          return 12;
+          break;
+        case 22:
+          return 12;
+          break;
+        case 23:
+          return 12;
+          break;
+        case 24:
+          return 12;
+          break;
+        case 25:
+          return 11;
+          break;
+        case 26:
+          return 11;
+          break;
+        case 27:
+          return 32;
+          break;
+        case 28:
+          return 32;
+          break;
+        case 29:
+          return 25;
+          break;
+        case 30:
+          return 33;
+          break;
+        case 31:
+          return 31;
+          break;
+        case 32:
+          return 31;
+          break;
+        case 33:
           return 5;
           break;
       }
-    }, rules:[/^(?:\s+)/, /^(?:\()/, /^(?:\))/, /^(?:=)/, /^(?:<=>)/, /^(?:<->)/, /^(?:\u21d4)/, /^(?:\u2194)/, /^(?:\u2261)/, /^(?:=>)/, /^(?:->)/, /^(?:\u21d2)/, /^(?:\u2192)/, /^(?:\u2283)/, /^(?:A\b)/, /^(?:&&)/, /^(?:&)/, /^(?:\u2227)/, /^(?:\*)/, /^(?:\.)/, /^(?:V\b)/, /^(?:\|\|)/, /^(?:\|)/, /^(?:\u2228)/, /^(?:\+)/, /^(?:\u2260)/, /^(?:\u2262)/, /^(?:\u22bb)/, /^(?:\u2295)/, /^(?:<~>)/, /^(?:~)/, /^(?:\u00ac)/, /^(?:!)/, /^(?:-)/, /^(?:([Tt][Rr][Uu][Ee]))/, /^(?:T\b)/, /^(?:\u22a4)/, /^(?:1\b)/, 
-    /^(?:([Ff][Aa][Ll][Ss][Ee]))/, /^(?:F\b)/, /^(?:\u22a5)/, /^(?:0\b)/, /^(?:([A-Za-z]))/, /^(?:$)/], conditions:{"INITIAL":{"rules":[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43], "inclusive":true}}};
+    }, rules:[/^(?:\s+)/, /^(?:\()/, /^(?:\))/, /^(?:\*\*)/, /^(?:\^)/, /^(?:\|)/, /^(?:\u221a)/, /^(?:\*)/, /^(?:\u00d7)/, /^(?:\/\/)/, /^(?:\/)/, /^(?:\u00f7)/, /^(?:%)/, /^(?:-)/, /^(?:\+)/, /^(?:<=)/, /^(?:\u2264)/, /^(?:>=)/, /^(?:\u2265)/, /^(?:<)/, /^(?:>)/, /^(?:!=)/, /^(?:\/=)/, /^(?:<>)/, /^(?:\u2260)/, /^(?:==)/, /^(?:=)/, /^(?:(([0-9])+\.?([0-9])*|\.([0-9])+)([Ee][+-]?([0-9])+)?)/, /^(?:(0[Bb]([0-1])+|0[Oo]([0-7])+|0[Xx]([0-9A-Fa-f])+))/, /^(?:#[^\#\s]+#)/, /^(?:\$[^\$\s]+\$)/, /^(?:deltaT\b)/, 
+    /^(?:([A-Za-z]))/, /^(?:$)/], conditions:{"INITIAL":{"rules":[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33], "inclusive":true}}};
     return lexer;
   }();
   parser.lexer = lexer;
@@ -22488,190 +26458,242 @@ var CTATLogicGrammar = function() {
   parser.Parser = Parser;
   return new Parser;
 }();
-goog.provide("CTATLogicParser");
-goog.require("CTATLogicGrammar");
-goog.require("CTATLogicRelationNode");
-goog.require("CTATLogicVariableNode");
-goog.require("CTATLogicConstantNode");
-goog.require("CTATLogicTreeNode");
+goog.provide("CTATChemParser");
+goog.require("CTATChemGrammar");
+goog.require("CTATChemRelationNode");
+goog.require("CTATChemAdditionNode");
+goog.require("CTATChemMultiplicationNode");
+goog.require("CTATChemIntDivisionNode");
+goog.require("CTATChemUnaryNode");
+goog.require("CTATChemPowerNode");
+goog.require("CTATChemVariableNode");
+goog.require("CTATChemConstantNode");
+goog.require("CTATChemTreeNode");
 (function() {
-  var CTATLogicParser;
-  CTATLogicParser = function() {
-    function CTATLogicParser(variableTable) {
-      this.parser = new CTATLogicGrammar.Parser;
-      this.parser.yy = {CTATLogicRelationNode:CTATLogicRelationNode, CTATLogicVariableNode:CTATLogicVariableNode, CTATLogicConstantNode:CTATLogicConstantNode, CTATLogicTreeNode:CTATLogicTreeNode};
+  var CTATChemParser;
+  CTATChemParser = function() {
+    function CTATChemParser(variableTable) {
+      this.parser = new CTATChemGrammar.Parser;
+      this.parser.yy = {CTATChemRelationNode:CTATChemRelationNode, CTATChemAdditionNode:CTATChemAdditionNode, CTATChemMultiplicationNode:CTATChemMultiplicationNode, CTATChemIntDivisionNode:CTATChemIntDivisionNode, CTATChemUnaryNode:CTATChemUnaryNode, CTATChemPowerNode:CTATChemPowerNode, CTATChemVariableNode:CTATChemVariableNode, CTATChemConstantNode:CTATChemConstantNode, CTATChemTreeNode:CTATChemTreeNode};
       this.parser.yy.variableTable = variableTable;
     }
-    CTATLogicParser.none = [];
-    CTATLogicParser.minimal = ["replaceNodes", "sort"];
-    CTATLogicParser.negation = ["replaceNodes", "pushNegation", "flatten", "sort", "absorb"];
-    CTATLogicParser.conjunction = ["replaceNodes", "pushNegation", "flatten", "sort", "distributeDisjunction", "absorb"];
-    CTATLogicParser.disjunction = ["replaceNodes", "pushNegation", "flatten", "sort", "distributeConjunction", "absorb"];
-    CTATLogicParser.prototype.getTree = function(expression) {
-      if (expression instanceof CTATLogicTreeNode) {
-        return expression;
+    CTATChemParser.none = ["simpleFlatten"];
+    CTATChemParser.partial = ["flatten", "removeIdentity"];
+    CTATChemParser.full = ["flatten", "computeConstants", "combineSimilar", "expand", "distribute", "removeIdentity"];
+    CTATChemParser.prototype.chemParse = function(expression, order) {
+      var toSimp;
+      if (order == null) {
+        order = false;
+      }
+      try {
+        toSimp = typeof expression === "string" ? this.parser.parse(expression) : expression;
+        return toSimp.simplify(CTATChemParser.none.concat(order ? "sort" : []));
+      } catch (_error) {
+        return null;
+      }
+    };
+    CTATChemParser.prototype.chemStringify = function(tree, wrapSymbols) {
+      if (wrapSymbols == null) {
+        wrapSymbols = false;
+      }
+      if (tree != null) {
+        return tree.toString(wrapSymbols);
       } else {
-        if (expression instanceof String) {
-          try {
-            return Object.assign(this.parser.parse(expression), {path:expression.path});
-          } catch (_error) {
-            return null;
-          }
-        } else {
-          try {
-            return this.parser.parse(String(expression));
-          } catch (_error$14) {
-            return null;
-          }
-        }
+        return tree;
       }
     };
-    CTATLogicParser.prototype.getExpression = function(expression, result) {
-      if (expression instanceof CTATLogicTreeNode) {
-        return result;
+    CTATChemParser.prototype.chemEvaluate = function(expression) {
+      var toSimp;
+      try {
+        toSimp = typeof expression === "string" ? this.parser.parse(expression) : expression;
+        return toSimp.simplify(CTATChemParser.none).evaluate();
+      } catch (_error) {
+        return null;
+      }
+    };
+    CTATChemParser.prototype.chemPartialSimplify = function(expression, order, wrapSymbols) {
+      var toSimp;
+      if (order == null) {
+        order = false;
+      }
+      if (wrapSymbols == null) {
+        wrapSymbols = false;
+      }
+      try {
+        toSimp = typeof expression === "string" ? this.parser.parse(expression) : expression;
+        return toSimp.simplify(CTATChemParser.partial.concat(order ? "sort" : [])).toString(wrapSymbols);
+      } catch (_error) {
+        return null;
+      }
+    };
+    CTATChemParser.prototype.chemSimplify = function(expression, order, wrapSymbols) {
+      var toSimp;
+      if (order == null) {
+        order = false;
+      }
+      if (wrapSymbols == null) {
+        wrapSymbols = false;
+      }
+      try {
+        if (typeof expression === "string") {
+          toSimp = this.parser.parse(expression);
+          return toSimp.simplify(CTATChemParser.full.concat(order ? "sort" : [])).toString(wrapSymbols);
+        } else {
+          return expression.simplify(CTATChemParser.full.concat(order ? "sort" : [])).toString(wrapSymbols);
+        }
+      } catch (_error) {
+        return null;
+      }
+    };
+    CTATChemParser.prototype.chemValid = function(expression, ordered) {
+      var tree1, tree2;
+      if (ordered == null) {
+        ordered = false;
+      }
+      if ((tree1 = this.chemParse(expression, true)) != null && (tree2 = this.chemParse(expression, !ordered)) != null) {
+        return tree1.toString() === tree2.toString();
       } else {
-        if (result != null ? result.path : void 0) {
-          return Object.assign(new String(result.toString()), {path:result.path});
-        } else {
-          try {
-            return result != null ? result.toString() : void 0;
-          } catch (_error) {
-            return null;
-          }
-        }
-      }
-    };
-    CTATLogicParser.prototype.logicParse = function(expression) {
-      try {
-        return this.parser.parse(String(expression)).simplify(CTATLogicParser.none);
-      } catch (_error) {
         return null;
       }
     };
-    CTATLogicParser.prototype.logicParseAndSort = function(expression) {
-      try {
-        return this.parser.parse(String(expression)).simplify(CTATLogicParser.minimal);
-      } catch (_error) {
-        return null;
-      }
-    };
-    CTATLogicParser.prototype.logicEvaluate = function(expression) {
-      try {
-        return this.parser.parse(String(expression)).evaluate();
-      } catch (_error) {
-        return null;
-      }
-    };
-    CTATLogicParser.prototype.logicFindAllOperators = function(expression, operator) {
-      var ref, ref1;
-      return (ref = this.getTree(expression)) != null ? (ref1 = ref.findAllOperators(operator, [])) != null ? ref1.map(function(_this) {
-        return function(subexpression) {
-          return _this.getExpression(expression, subexpression);
-        };
-      }(this)) : void 0 : void 0;
-    };
-    CTATLogicParser.prototype.logicFindAllExpressions = function(expression, subexpression) {
-      var ref, ref1;
-      return (ref = this.getTree(expression)) != null ? (ref1 = ref.findAllExpressions(subexpression, [])) != null ? ref1.map(function(_this) {
-        return function(subexpression) {
-          return _this.getExpression(expression, subexpression);
-        };
-      }(this)) : void 0 : void 0;
-    };
-    CTATLogicParser.prototype.logicReplaceExpression = function(expression, oldSubexpression, newSubexpression) {
-      var ref;
-      return this.getExpression(expression, (ref = this.getTree(expression)) != null ? ref.replaceExpression(this.getTree(oldSubexpression), this.getTree(newSubexpression), oldSubexpression.path.slice()) : void 0);
-    };
-    CTATLogicParser.prototype.logicApplyRule = function(expression, rule) {
-      var ref;
-      return this.getExpression(expression, (ref = this.getTree(expression)) != null ? ref.simplifyNode([rule]) : void 0);
-    };
-    CTATLogicParser.prototype.logicSimplifyNNF = function(expression) {
-      try {
-        return this.parser.parse(String(expression)).simplify(CTATLogicParser.negation).toString();
-      } catch (_error) {
-        return null;
-      }
-    };
-    CTATLogicParser.prototype.logicSimplifyCNF = function(expression) {
-      try {
-        return this.parser.parse(String(expression)).simplify(CTATLogicParser.conjunction).toString();
-      } catch (_error) {
-        return null;
-      }
-    };
-    CTATLogicParser.prototype.logicSimplifyDNF = function(expression) {
-      try {
-        return this.parser.parse(String(expression)).simplify(CTATLogicParser.disjunction).toString();
-      } catch (_error) {
-        return null;
-      }
-    };
-    CTATLogicParser.prototype.logicValid = function(expression) {
-      return this.logicParse(expression) != null;
-    };
-    CTATLogicParser.prototype.logicValued = function(expression) {
+    CTATChemParser.prototype.chemValued = function(expression) {
       var value;
-      if ((value = this.logicEvaluate(expression)) != null) {
-        return value != null;
+      if ((value = this.chemEvaluate(expression)) != null) {
+        return !isNaN(value);
       } else {
         return null;
       }
     };
-    CTATLogicParser.prototype.logicSimplifiedNNF = function(expression) {
+    CTATChemParser.prototype.chemPartialSimplified = function(expression, ordered) {
+      var string1, tree2;
+      if (ordered == null) {
+        ordered = false;
+      }
+      if ((string1 = this.chemPartialSimplify(expression, true)) != null && (tree2 = this.chemParse(expression, !ordered)) != null) {
+        return string1 === tree2.toString();
+      } else {
+        return null;
+      }
+    };
+    CTATChemParser.prototype.chemSimplified = function(expression, ordered) {
+      var string1, tree2;
+      if (ordered == null) {
+        ordered = false;
+      }
+      if ((string1 = this.chemSimplify(expression, true)) != null && (tree2 = this.chemParse(expression, !ordered)) != null) {
+        return string1 === tree2.toString();
+      } else {
+        return null;
+      }
+    };
+    CTATChemParser.prototype.chemIdentical = function(expression1, expression2, sameOrder) {
       var tree1, tree2;
-      if ((tree1 = this.logicSimplifyNNF(expression)) != null && (tree2 = this.logicParseAndSort(expression)) != null) {
+      if (sameOrder == null) {
+        sameOrder = false;
+      }
+      if ((tree1 = this.chemParse(expression1, !sameOrder)) != null && (tree2 = this.chemParse(expression2, !sameOrder)) != null) {
         return tree1.toString() === tree2.toString();
       } else {
         return null;
       }
     };
-    CTATLogicParser.prototype.logicSimplifiedCNF = function(expression) {
-      var tree1, tree2;
-      if ((tree1 = this.logicSimplifyCNF(expression)) != null && (tree2 = this.logicParseAndSort(expression)) != null) {
-        return tree1.toString() === tree2.toString();
-      } else {
-        return null;
-      }
-    };
-    CTATLogicParser.prototype.logicSimplifiedDNF = function(expression) {
-      var tree1, tree2;
-      if ((tree1 = this.logicSimplifyDNF(expression)) != null && (tree2 = this.logicParseAndSort(expression)) != null) {
-        return tree1.toString() === tree2.toString();
-      } else {
-        return null;
-      }
-    };
-    CTATLogicParser.prototype.logicIdentical = function(expression1, expression2) {
-      var tree1, tree2;
-      if ((tree1 = this.logicParseAndSort(expression1)) != null && (tree2 = this.logicParseAndSort(expression2)) != null) {
-        return tree1.equals(tree2);
-      } else {
-        return null;
-      }
-    };
-    CTATLogicParser.prototype.logicEqual = function(expression1, expression2) {
+    CTATChemParser.prototype.chemEqual = function(expression1, expression2) {
       var value1, value2;
-      if ((value1 = this.logicEvaluate(expression1)) != null && (value2 = this.logicEvaluate(expression2)) != null) {
+      if ((value1 = this.chemEvaluate(expression1)) != null && (value2 = this.chemEvaluate(expression2)) != null) {
         return value1 === value2;
       } else {
         return null;
       }
     };
-    CTATLogicParser.prototype.logicEquivalent = function(expression1, expression2) {
+    CTATChemParser.prototype.chemPartialEquivalent = function(expression1, expression2, sameOrder) {
       var string1, string2;
-      if ((string1 = this.logicSimplifyDNF(expression1)) != null && (string2 = this.logicSimplifyDNF(expression2)) != null) {
+      if (sameOrder == null) {
+        sameOrder = false;
+      }
+      if ((string1 = this.chemPartialSimplify(expression1, !sameOrder)) != null && (string2 = this.chemPartialSimplify(expression2, !sameOrder)) != null) {
         return string1 === string2;
       } else {
         return null;
       }
     };
-    return CTATLogicParser;
+    CTATChemParser.prototype.chemEquivalent = function(expression1, expression2, sameOrder) {
+      var string1, string2;
+      if (sameOrder == null) {
+        sameOrder = false;
+      }
+      if ((string1 = this.chemSimplify(expression1, !sameOrder)) != null && (string2 = this.chemSimplify(expression2, !sameOrder)) != null) {
+        return string1 === string2;
+      } else {
+        return null;
+      }
+    };
+    CTATChemParser.prototype.isChemValid = CTATChemParser.prototype.chemValid;
+    CTATChemParser.prototype.chemEval = CTATChemParser.prototype.chemEvaluate;
+    CTATChemParser.prototype.chemStrictEquivTermsSameOrder = function(expression1, expression2) {
+      return this.chemPartialEquivalent(expression1, expression2, true);
+    };
+    CTATChemParser.prototype.chemEquivTermsSameOrder = CTATChemParser.prototype.chemStrictEquivTermsSameOrder;
+    CTATChemParser.prototype.chemStrictEquivTerms = CTATChemParser.prototype.chemPartialEquivalent;
+    CTATChemParser.prototype.chemEquivTerms = CTATChemParser.prototype.chemStrictEquivTerms;
+    CTATChemParser.prototype.chemEquiv = CTATChemParser.prototype.chemEquivalent;
+    CTATChemParser.prototype.isSimplified = function(expression) {
+      return this.chemSimplified(expression, true);
+    };
+    CTATChemParser.prototype.calc = CTATChemParser.prototype.chemEvaluate;
+    CTATChemParser.prototype.calca = function(expression) {
+      return (+this.chemEvaluate(expression)).toFixed(2);
+    };
+    CTATChemParser.prototype.simplify = function(expression) {
+      return this.chemSimplify(expression, true);
+    };
+    CTATChemParser.prototype.algebraicEqual = CTATChemParser.prototype.chemEqual;
+    CTATChemParser.prototype.patternMatches = function(expression1, expression2) {
+      return this.chemIdentical(expression1, expression2, true);
+    };
+    CTATChemParser.prototype.polyTermsEqual = function(expression1, expression2) {
+      return this.parser.parse(expression1).simplify(CTATChemParser.partial).equals(this.parser.parse(expression2).simplify(CTATChemParser.partial));
+    };
+    CTATChemParser.prototype.algebraicMatches = function(expression1, expression2) {
+      return this.chemEquivalent(expression1, expression2, true);
+    };
+    CTATChemParser.prototype.expressionMatches = CTATChemParser.prototype.algebraicMatches;
+    CTATChemParser.prototype.chemGetVariables = function(expression) {
+      var found, tree, vars, varsNoDups;
+      tree = this.chemParse(expression);
+      vars = tree.getVariables();
+      varsNoDups = [];
+      found = {};
+      vars.forEach(function(_this) {
+        return function(variable) {
+          if (!found[variable]) {
+            varsNoDups.push(variable);
+            return found[variable] = true;
+          }
+        };
+      }(this));
+      return varsNoDups;
+    };
+    CTATChemParser.prototype.chemSetVariable = function(expression, varName, value) {
+      var parsedValue, tree;
+      tree = this.chemParse(expression);
+      parsedValue = this.chemParse(value);
+      if (tree.operator === "VAR") {
+        if (tree.variable === varName) {
+          return parsedValue;
+        } else {
+          return tree;
+        }
+      } else {
+        tree.setVariable(varName, parsedValue);
+        return tree;
+      }
+    };
+    return CTATChemParser;
   }();
   if (typeof module !== "undefined" && module !== null) {
-    module.exports = CTATLogicParser;
+    module.exports = CTATChemParser;
   } else {
-    this.CTATLogicParser = CTATLogicParser;
+    this.CTATChemParser = CTATChemParser;
   }
 }).call(this);
 goog.provide("CTATFormulaFunctions");
@@ -22714,6 +26736,11 @@ goog.provide("CTATFormulaFunctions");
       return predicate(number1, number2);
     }
   };
+  Object.defineProperty(Array.prototype, "uniq", {value:function() {
+    return this.filter(function(value, index, array) {
+      return array.indexOf(value) === index;
+    });
+  }});
   CTATFormulaFunctions = function() {
     function CTATFormulaFunctions() {
     }
@@ -23198,6 +27225,9 @@ goog.provide("CTATFormulaFunctions");
       }
       return object[lastKey] = value;
     };
+    CTATFormulaFunctions.length = function(object) {
+      return object.length;
+    };
     CTATFormulaFunctions.toString = function(object) {
       return object.toString();
     };
@@ -23240,6 +27270,7 @@ goog.provide("CTATFormulaParser");
 goog.require("CTATVariableTable");
 goog.require("CTATAlgebraParser");
 goog.require("CTATLogicParser");
+goog.require("CTATChemParser");
 goog.require("CTATFormulaFunctions");
 goog.require("CTATFormulaActions");
 (function() {
@@ -23261,9 +27292,10 @@ goog.require("CTATFormulaActions");
       this.variableTable = variableTable;
       this.algebraParser = new CTATAlgebraParser;
       this.logicParser = new CTATLogicParser;
+      this.chemParser = new CTATChemParser;
       this.keys = [];
       this.values = [];
-      ref = ["EPSILON", "MAX_VALUE", "MIN_VALUE", "POSITIVE_INFINITY", "NEGATIVE_INFINITY", "isFinite", "isInteger", "isNaN", "parseFloat", "parseInt"];
+      ref = ["EPSILON", "MAX_SAFE_INTEGER", "MAX_VALUE", "MIN_SAFE_INTEGER", "MIN_VALUE", "NEGATIVE_INFINITY", "POSITIVE_INFINITY", "isFinite", "isInteger", "isNaN", "isSafeInteger", "parseFloat", "parseInt"];
       for (i = 0, len = ref.length;i < len;i++) {
         key = ref[i];
         this.keys.push(key);
@@ -23293,7 +27325,7 @@ goog.require("CTATFormulaActions");
         this.keys.push(key);
         this.values.push(String[key]);
       }
-      ref4 = ["charAt", "charCodeAt", "codePointAt", "concat", "contains", "endsWith", "indexOf", "lastIndexOf", "localeCompare", "match", "repeat", "replace", "search", "slice", "split", "startsWith", "substr", "substring", "toLocaleLowerCase", "toLocaleUpperCase", "toLowerCase", "toUpperCase", "trim", "valueOf"];
+      ref4 = ["charAt", "charCodeAt", "codePointAt", "concat", "endsWith", "includes", "indexOf", "lastIndexOf", "localeCompare", "match", "normalize", "padEnd", "padStart", "repeat", "replace", "search", "slice", "split", "startsWith", "substr", "substring", "toLocaleLowerCase", "toLocaleUpperCase", "toLowerCase", "toUpperCase", "trim", "trimEnd", "trimStart", "valueOf"];
       for (m = 0, len4 = ref4.length;m < len4;m++) {
         key = ref4[m];
         this.keys.push(key);
@@ -23305,11 +27337,7 @@ goog.require("CTATFormulaActions");
           };
         }(String.prototype[key]));
       }
-      this.keys.push("length");
-      this.values.push(function(string) {
-        return string.length;
-      });
-      ref5 = ["algParse", "algEvaluate", "algPartialSimplify", "algSimplify", "algValid", "algValued", "algPartialSimplified", "algSimplified", "algIdentical", "algEqual", "algPartialEquivalent", "algEquivalent", "isAlgValid", "algEval", "algStrictEquivTermsSameOrder", "algEquivTermsSameOrder", "algStrictEquivTerms", "algEquivTerms", "algEquiv", "isSimplified", "calc", "calca", "simplify", "algebraicEqual", "patternMatches", "polyTermsEqual", "algebraicMatches", "expressionMatches"];
+      ref5 = ["algParse", "algStringify", "algEvaluate", "algPartialSimplify", "algSimplify", "algValid", "algValued", "algPartialSimplified", "algSimplified", "algIdentical", "algEqual", "algPartialEquivalent", "algEquivalent", "isAlgValid", "algEval", "algStrictEquivTermsSameOrder", "algEquivTermsSameOrder", "algStrictEquivTerms", "algEquivTerms", "algEquiv", "isSimplified", "calc", "calca", "simplify", "algebraicEqual", "patternMatches", "polyTermsEqual", "algebraicMatches", "expressionMatches"];
       for (n = 0, len5 = ref5.length;n < len5;n++) {
         key = ref5[n];
         this.keys.push(key);
@@ -23321,7 +27349,8 @@ goog.require("CTATFormulaActions");
           };
         }(this.algebraParser[key], this.algebraParser));
       }
-      ref6 = ["logicParse", "logicEvaluate", "logicValid", "logicValued", "logicIdentical", "logicEqual", "logicEquivalent", "logicFindAllOperators", "logicFindAllExpressions", "logicReplaceExpression", "logicApplyRule", "logicSimplifyNNF", "logicSimplifyCNF", "logicSimplifyDNF", "logicSimplifiedNNF", "logicSimplifiedCNF", "logicSimplifiedDNF"];
+      ref6 = ["logicSetMode", "logicParse", "logicGetError", "logicStringify", "logicEvaluate", "logicSort", "logicGetOperator", "logicGetOperators", "logicGetVariables", "logicGetOperands", "logicFindOperator", "logicFindExpression", "logicFindRule", "logicApplyRules", "logicReplaceExpression", "logicValid", "logicValued", "logicSorted", "logicIdentical", "logicEqual", "logicEquivalent", "logicSemanticEquivalent", "logicFindCounterExample", "logicSimplifyNNF", "logicSimplifyCNF", "logicSimplifyDNF", 
+      "logicSimplifiedNNF", "logicSimplifiedCNF", "logicSimplifiedDNF"];
       for (o = 0, len6 = ref6.length;o < len6;o++) {
         key = ref6[o];
         this.keys.push(key);
@@ -23508,6 +27537,13 @@ CTATAnyMatcher = function(vector, value) {
   this.matchSingle = function(s) {
     return true;
   };
+  this.MatcherSAItoXML = function(indent) {
+    var result = indent + "<matcher>\n";
+    result += indent + "    <matcherType>AnyMatcher</matcherType>\n";
+    result += indent + '    <matcherParameter name="single">' + that.getSingle() + "</matcherParameter>\n";
+    result += indent + "</matcher>\n";
+    return result;
+  };
 };
 CTATAnyMatcher.prototype = Object.create(CTATSingleMatcher.prototype);
 CTATAnyMatcher.prototype.constructor = CTATAnyMatcher;
@@ -23517,6 +27553,7 @@ if (typeof module !== "undefined") {
 ;goog.provide("CTATExactMatcher");
 goog.require("CTATSingleMatcher");
 CTATExactMatcher = function(vector, value) {
+  var matcher = null;
   CTATSingleMatcher.call(this, vector, true);
   var that = this;
   this.toString = function() {
@@ -23530,6 +27567,13 @@ CTATExactMatcher = function(vector, value) {
     } else {
       return String(s) == String(sv);
     }
+  };
+  this.MatcherSAItoXML = function(indent) {
+    var result = indent + "<matcher>\n";
+    result += indent + "    <matcherType>ExactMatcher</matcherType>\n";
+    result += indent + '    <matcherParameter name="single">' + that.getSingle() + "</matcherParameter>\n";
+    result += indent + "</matcher>\n";
+    return result;
   };
 };
 CTATExactMatcher.prototype = Object.create(CTATSingleMatcher.prototype);
@@ -23561,8 +27605,10 @@ goog.require("CTATFormulaParser");
 goog.require("CTATMatcher");
 CTATExpressionMatcher = function(givenVector, givenText) {
   CTATSingleMatcher.call(this, givenVector, givenText);
+  var matcher = null;
   var vector = givenVector;
   var relation = CTATExpressionMatcher.EQ_RELATION;
+  var relation = CTATExpressionMatcher.BOOL_RELATION;
   var expression = givenText;
   var lastInput = null;
   var lastError = null;
@@ -23668,6 +27714,14 @@ CTATExpressionMatcher = function(givenVector, givenText) {
   };
   this.toString = function() {
     return CTATExpressionMatcher.RELATIONS[relation] + ' "' + expression + '"';
+  };
+  this.MatcherSAItoXML = function(indent) {
+    var result = indent + "<matcher>\n";
+    result += indent + "    <matcherType>ExpressionMatcher</matcherType>\n";
+    result += indent + '    <matcherParameter name="InputExpression">' + that.getInputExpression() + "</matcherParameter>\n";
+    result += indent + '    <matcherParameter name="relation">' + CTATExpressionMatcher.RELATIONS[relation] + "</matcherParameter>\n";
+    result += indent + "</matcher>\n";
+    return result;
   };
   this.matchSingle = function(s) {
     throw new CTATExampleTracerException("UnsupportedOperationException");
@@ -23812,6 +27866,14 @@ CTATRangeMatcher = function(vector, value) {
   this.toString = function() {
     return "[ " + minimum + " , " + maximum + " ]";
   };
+  this.MatcherSAItoXML = function(indent) {
+    var result = indent + "<matcher>\n";
+    result += indent + "    <matcherType>RangeMatcher</matcherType>\n";
+    result += indent + '    <matcherParameter name="minimum">' + that.getMinimum() + "</matcherParameter>\n";
+    result += indent + '    <matcherParameter name="maximum">' + that.getMaximum() + "</matcherParameter>\n";
+    result += indent + "</matcher>\n";
+    return result;
+  };
   this.setMinimum = function(minVal) {
     try {
       minimum = parseFloat(minVal);
@@ -23819,12 +27881,18 @@ CTATRangeMatcher = function(vector, value) {
       throw new CTATExampleTracerException('Number format exception while parsing minimum value "' + minVal + '": ' + e$19);
     }
   };
+  this.getMinimum = function() {
+    return minimum;
+  };
   this.setMaximum = function(maxVal) {
     try {
       maximum = parseFloat(maxVal);
     } catch (e$20) {
       throw new CTATExampleTracerException('Number format exception while parsing maximum value "' + maxVal + '": ' + e$20);
     }
+  };
+  this.getMaximum = function() {
+    return maximum;
   };
   this.matchSingle = function(s) {
     var answer;
@@ -23873,6 +27941,13 @@ CTATRegexMatcher = function(vector, value) {
   this.toString = function() {
     return singlePattern;
   };
+  this.MatcherSAItoXML = function(indent) {
+    var result = indent + "<matcher>\n";
+    result += indent + "    <matcherType>RegexMatcher</matcherType>\n";
+    result += indent + '    <matcherParameter name="single">' + that.getSinglePattern() + "</matcherParameter>\n";
+    result += indent + "</matcher>\n";
+    return result;
+  };
   this.setSinglePattern = function(pattern) {
     if (typeof pattern === "undefined" || pattern === null) {
       console.log("CTATRegexMatcher: null or undefined pattern");
@@ -23880,6 +27955,9 @@ CTATRegexMatcher = function(vector, value) {
     }
     singlePattern = pattern;
     singlePatternObj = that.getCaseInsensitive() ? new RegExp(pattern, "i") : new RegExp(pattern);
+  };
+  this.getSinglePattern = function() {
+    return singlePattern;
   };
   this.setSingle = function(pattern) {
     that.setSinglePattern(pattern);
@@ -23909,6 +27987,13 @@ CTATWildcardMatcher = function(vector, value) {
   var simpleSinglePattern = null;
   this.toString = function() {
     return simpleSinglePattern;
+  };
+  this.MatcherSAItoXML = function(indent) {
+    var result = indent + "<matcher>\n";
+    result += indent + "    <matcherType>WildcardMatcher</matcherType>\n";
+    result += indent + '    <matcherParameter name="single">' + that.getSinglePattern() + "</matcherParameter>\n";
+    result += indent + "</matcher>\n";
+    return result;
   };
   this.setSingle = function(pattern) {
     that.simpleSinglePattern = pattern;
@@ -24235,6 +28320,7 @@ CTATExampleTracerNode = function(givenNodeID, givenOutLinks) {
   CTATBase.call(this, "CTATExampleTracerNode", givenNodeID);
   var visuals = null;
   var nodeID = givenNodeID;
+  var dimension = {x:1, y:1};
   var nodeName = "";
   var outLinks = givenOutLinks ? givenOutLinks : new Set;
   var correctOutLinks = new Set;
@@ -24244,12 +28330,46 @@ CTATExampleTracerNode = function(givenNodeID, givenOutLinks) {
     }
   });
   var inLinks = new Set;
+  var DoneState = false;
   var that = this;
   this.toString = function() {
     return "node" + nodeID;
   };
+  this.toXML = function(indent) {
+    var result = indent + '<node locked="' + this.getLocked() + '" doneState="' + this.IsDoneState() + '">\n';
+    result += indent + "    <text>" + this.getNodeName() + "</text>\n";
+    result += indent + "    <uniqueID>" + this.getNodeID() + "</uniqueID>\n";
+    result += dimensionToXML(this.getDimension(), indent + "    ") + "\n";
+    result += indent + "</node>";
+    return result;
+  };
+  function dimensionToXML(d, indent) {
+    var result = indent + "<dimension>\n";
+    result += indent + "    <x>" + d.x + "</x>\n";
+    result += indent + "    <y>" + d.y + "</y>\n";
+    result += indent + "</dimension>";
+    return result;
+  }
   this.getNodeID = function() {
     return nodeID;
+  };
+  this.getLocked = function() {
+    return false;
+  };
+  this.IsDoneState = function() {
+    if (this.getNodeName().startsWith("Done")) {
+      return true;
+    }
+    return DoneState;
+  };
+  this.setDoneState = function(DS) {
+    DoneState = DS;
+  };
+  this.getDimension = function() {
+    return dimension;
+  };
+  this.setDimension = function(d) {
+    dimension = d;
   };
   this.getNodeName = function() {
     return nodeName;
@@ -24349,6 +28469,8 @@ CTATExampleTracerLink = function(givenUniqueID, givenPrevNode, givenNextNode) {
   CTATBase.call(this, "CTATExampleTracerLink", "(" + givenPrevNode + "-" + givenNextNode + ")");
   var uniqueID = typeof givenUniqueID === "undefined" || givenUniqueID === null ? null : givenUniqueID;
   var depth = null;
+  var DemoMsgObj = "";
+  var TransactionID = "";
   var prevNode = typeof givenPrevNode === "undefined" || givenPrevNode === null ? null : givenPrevNode;
   var nextNode = typeof givenNextNode === "undefined" || givenNextNode === null ? null : givenNextNode;
   var matcher = null;
@@ -24429,6 +28551,113 @@ CTATExampleTracerLink = function(givenUniqueID, givenPrevNode, givenNextNode) {
     sb += "]";
     return sb;
   };
+  this.toXML = function(indent) {
+    var result = indent + "<edge>\n";
+    result += actionLabelToXML(indent + "    ");
+    result += indent + "    <preCheckedStatus>No-Applicable</preCheckedStatus>\n";
+    result += skillsToXML(this.getSkillNames(), indent + "    ");
+    result += indent + "    <sourceID>" + this.getPrevNode() + "</sourceID>\n";
+    result += indent + "    <destID>" + this.getNextNode() + "</destID>\n";
+    result += indent + "    <traversalCount>0</traversalCount>\n";
+    result += indent + "</edge>";
+    return result;
+  };
+  function messageToXML(mes, indent) {
+    var result = indent + "<message>\n";
+    for (var z = 0;z < mes.length;z++) {
+      result += indent + indent + mes[z].outerHTML + "\n";
+    }
+    result += indent + "</messages>";
+    return result;
+  }
+  function DemoMsgObjToXML(indent) {
+    var result = "";
+    if (that.getDemoMsgObj()) {
+      result += indent + that.getDemoMsgObj().getXMLString(true) + "\n";
+    }
+    return result;
+  }
+  this.getDemoMsgObj = function() {
+    return DemoMsgObj;
+  };
+  this.setDemoMsgObj = function(DMO) {
+    DemoMsgObj = DMO;
+  };
+  this.getTransactionID = function getTransactionID() {
+    return TransactionID;
+  };
+  this.setTransactionID = function setTransactionID(tID) {
+    TransactionID = tID;
+  };
+  this.getXMLString = function(pretty) {
+    if (messageObj.xml) {
+      return messageObj.xml;
+    } else {
+      if (XMLSerializer) {
+        var xml_serializer = new XMLSerializer;
+        return xml_serializer.serializeToString(messageObj);
+      } else {
+        alert("ERROR: Extremely old browser");
+        return "";
+      }
+    }
+  };
+  function matchersToXML(indent) {
+    var sm = that.getMatcher().getMatchers(0)[0];
+    var am = that.getMatcher().getMatchers(1)[0];
+    var im = that.getMatcher().getMatchers(2)[0];
+    var result = indent + '<matchers Concatenation="true">\n';
+    result += indent + "    <Selection>\n";
+    result += sm.MatcherSAItoXML(indent + "        ");
+    result += indent + "    </Selection>\n";
+    result += indent + "    <Action>\n";
+    result += am.MatcherSAItoXML(indent + "        ");
+    result += indent + "    </Action>\n";
+    result += indent + "    <Input>\n";
+    result += im.MatcherSAItoXML(indent + "        ");
+    result += indent + "    </Input>\n";
+    result += indent + '    <Actor linkTriggered="false">' + that.getMatcher().getActor() + "</Actor>\n";
+    result += indent + "</matchers>\n";
+    return result;
+  }
+  function actionLabelToXML(indent) {
+    var result = indent + '<actionLabel preferPathMark="' + that.getIsPreferredLink() + '" minTraversals="' + that.getMinTraversalsStr() + '" maxTraversals="' + that.getMaxTraversalsStr() + '">\n';
+    result += indent + "    <studentHintRequest></studentHintRequest>\n";
+    result += indent + "    <stepSuccessfulCompletion></stepSuccessfulCompletion>\n";
+    result += indent + "    <stepStudentError></stepStudentError>\n";
+    result += indent + "    <uniqueID>" + that.getUniqueID() + "</uniqueID>\n";
+    result += DemoMsgObjToXML(indent + "    ");
+    result += indent + "    <buggyMessage>" + that.getBuggyMsg() + "</buggyMessage>\n";
+    result += indent + "    <successMessage>" + that.getSuccessMsg() + "</successMessage>\n";
+    var hints = that.getHints();
+    for (var h = 0;h < hints.length;h++) {
+      result += indent + "    <hintMessage>" + hints[h] + "</hintMessage>\n";
+    }
+    result += indent + "    <callbackFn></callbackFn>\n";
+    result += indent + "    <actionType>" + that.getActionType() + "</actionType>\n";
+    result += indent + "    <oldActionType>Correct Action</oldActionType>\n";
+    result += indent + "    <checkedStatus>Never Checked</checkedStatus>\n";
+    result += matchersToXML(indent + "    ");
+    result += indent + "</actionLabel>\n";
+    return result;
+  }
+  function skillsToXML(skillNames, indent) {
+    var result = "";
+    if (skillNames.length > 0) {
+      for (var sn = 0;sn < skillNames.length;sn++) {
+        result += indent + "<rule>\n";
+        result += indent + "    <text>" + skillNames[sn] + "</text>\n";
+        result += indent + "    <indicator>-1</indicator>\n";
+        result += indent + "</rule>\n";
+      }
+    } else {
+      result += indent + "<rule>\n";
+      result += indent + "    <text>unnamed</text>\n";
+      result += indent + "    <indicator>-1</indicator>\n";
+      result += indent + "</rule>\n";
+    }
+    return result;
+  }
   this.getTutorSAI = function(studentSAI, vt) {
     return that.getMatcher().getTutorSAI(studentSAI, vt, that.getActionType());
   };
@@ -24440,6 +28669,9 @@ CTATExampleTracerLink = function(givenUniqueID, givenPrevNode, givenNextNode) {
   };
   this.getMaxTraversals = function() {
     return maxTraversals;
+  };
+  this.getMaxTraversalsStr = function() {
+    return maxTraversalsStr;
   };
   this.isDone = function() {
     var s = String(that.getDefaultSAI().getSelection()).toLowerCase();
@@ -24527,6 +28759,9 @@ CTATExampleTracerLink = function(givenUniqueID, givenPrevNode, givenNextNode) {
   };
   this.getMinTraversals = function() {
     return minTraversals;
+  };
+  this.getMinTraversalsStr = function() {
+    return minTraversalsStr;
   };
   this.getIsPreferredLink = function() {
     return isPreferredLink;
@@ -25058,6 +29293,19 @@ CTATDefaultLinkGroup = function(givenGroupName, givenIsOrdered, givenIsReenterab
   that.ctatdebug("CTATDefaultLinkGroup constructor group name: " + givenGroupName);
   that.ctatdebug("CTATDefaultLinkGroup constructor group isOrdered: " + givenIsOrdered);
   that.ctatdebug("CTATDefaultLinkGroup constructor group isReenterable: " + givenIsReenterable);
+  this.toXML = function(indent, groupModel) {
+    var result = indent + '<group name="' + that.getName();
+    result += '" ordered="' + that.getIsOrdered();
+    result += '" reenterable="' + that.getIsReenterable() + '">' + "\n";
+    groupModel.getUniqueLinks(that).forEach(function(lk) {
+      result += indent + '    <link id="' + lk.getUniqueID() + '"/>\n';
+    });
+    subgroups.forEach(function(sg) {
+      result += sg.toXML(indent + "    ", groupModel);
+    });
+    result += indent + "</group>\n";
+    return result;
+  };
   this.setOrdered = function(givIsOrdered) {
     that.ctatdebug("CTATDefaultLinkGroup --\x3e in setOrdered group name: " + groupName);
     that.ctatdebug("CTATDefaultLinkGroup --\x3e in setOrdered:: " + givIsOrdered);
@@ -25094,6 +29342,9 @@ CTATDefaultLinkGroup = function(givenGroupName, givenIsOrdered, givenIsReenterab
   this.getSubgroups = function() {
     that.ctatdebug("CTATDefaultLinkGroup --\x3e in getSubgroups");
     return subgroups;
+  };
+  this.setSubgroups = function(SubGr) {
+    subgroups = SubGr;
   };
   this.getLinks = function() {
     that.ctatdebug("CTATDefaultLinkGroup --\x3e in getLinks");
@@ -25990,6 +30241,9 @@ CTATExampleTracerInterpretation = function(givenValidPaths) {
     interp.setWorstLinkType(worstLinkType);
     var vtCopy = vt.clone();
     interp.setVariableTable(vtCopy);
+    interp.setLatestHints(that.getLatestHints());
+    interp.setLatestSuccessMessage(that.getLatestSuccessMessage());
+    interp.setLatestBuggyMessage(that.getLatestBuggyMessage());
     if (pathToDone) {
       interp.setPathToDone(new CTATExampleTracerPath(pathToDone.getLinks()));
     }
@@ -26244,6 +30498,7 @@ CTATExampleTracerTracer = function(givenGraph, givenVT) {
     }
     if (doUpdate || result.getWantReportableHints()) {
       newInterps.forEach(function(interp) {
+        var successOrBuggyMsg = "";
         var iterLink = interp.getLastMatchedLink();
         if (!iterLink) {
           return;
@@ -26254,10 +30509,14 @@ CTATExampleTracerTracer = function(givenGraph, givenVT) {
               interp.setLatestHints(link.interpolateHints(interp.getVariableTable()), iterLink.getHints());
             }
           } else {
-            interp.setLatestSuccessMessage(interpolate(iterLink.getSuccessMsg(), interp.getVariableTable(), result.getStudentSAI()));
+            interp.setLatestSuccessMessage(successOrBuggyMsg = interpolate(iterLink.getSuccessMsg(), interp.getVariableTable(), result.getStudentSAI()));
           }
         } else {
-          interp.setLatestBuggyMessage(interpolate(iterLink.getBuggyMsg(), interp.getVariableTable(), result.getStudentSAI()));
+          interp.setLatestBuggyMessage(successOrBuggyMsg = interpolate(iterLink.getBuggyMsg(), interp.getVariableTable(), result.getStudentSAI()));
+        }
+        if (interp == bestInterp) {
+          that.ctatdebug('ETT.finishEvaluate() successOrBuggyMsg "' + successOrBuggyMsg + '"');
+          result.setSuccessOrBuggyMsg(successOrBuggyMsg);
         }
       });
     }
@@ -26319,11 +30578,7 @@ CTATExampleTracerTracer = function(givenGraph, givenVT) {
       var tutorSai = link.getTutorSAI(result.getInterpolatedSAI(), bestInterp.getVariableTable());
       that.ctatdebug("In evaluate -- TUTORSAI: " + tutorSai + ", studentSAI was " + result.getStudentSAI());
       result.setTutorSAI(tutorSai);
-    }
-    var successOrBuggyMsg = type == CTATExampleTracerLink.CORRECT_ACTION ? bestInterp.getLatestSuccessMessage() : bestInterp.getLatestBuggyMessage();
-    that.ctatdebug('ETT.finishEvaluate() successOrBuggyMsg "' + successOrBuggyMsg + '"');
-    result.setSuccessOrBuggyMsg(successOrBuggyMsg);
-    if (result.getHintRequest()) {
+    } else {
       result.setReportableHints(bestInterp.getLatestHints());
       that.ctatdebug("In evaluate --\x3e after setReportableHints");
     }
@@ -26995,6 +31250,22 @@ CTATExampleTracerTracer = function(givenGraph, givenVT) {
       return graph ? graph.getStartNode() : null;
     }
   };
+  this.saveLastReport = function(result) {
+    if (!interpretations || !result) {
+      return;
+    }
+    interpretations.forEach(function(interp) {
+      interp.setLatestHints(result.getReportableHints() || []);
+      var m = result.getSuccessOrBuggyMsg() || "";
+      if (result.getResult() == CTATExampleTracerLink.CORRECT_ACTION) {
+        interp.setLatestSuccessMessage(m);
+        interp.setLatestBuggyMessage("");
+      } else {
+        interp.setLatestSuccessMessage("");
+        interp.setLatestBuggyMessage(m);
+      }
+    });
+  };
 };
 CTATExampleTracerTracer.prototype = Object.create(CTATBase.prototype);
 CTATExampleTracerTracer.prototype.constructor = CTATExampleTracerTracer;
@@ -27017,10 +31288,13 @@ CTATExampleTracerGraph = function(isUnordered, youStartYouFinish, givenVT) {
   var nodeMap = null;
   var startNode = null;
   var studentStartsHereNode = null;
+  var startStateMsgs = [];
   var doneStates = new Set;
   var doneLinks = new Set;
   var visuals = null;
   var groupModel = null;
+  var lockWidget = true;
+  var caseInsensitive = true;
   var feedbackPolicy = CTATMsgType.SHOW_ALL_FEEDBACK;
   var that = this;
   function initGraph(isOrdered, youStartYouFinish) {
@@ -27307,6 +31581,9 @@ CTATExampleTracerGraph = function(isUnordered, youStartYouFinish, givenVT) {
     }
     return true;
   }
+  this.getAllNodes = function() {
+    return addedNodes;
+  };
   function buildInLinks() {
     for (var i = 0;i < nodes.length;i++) {
       nodes[i].clearInLinks();
@@ -27504,6 +31781,136 @@ CTATExampleTracerGraph = function(isUnordered, youStartYouFinish, givenVT) {
     that.ctatdebug("CTATExampleTracerGraph --\x3e out of isIncorrectLinkOK");
     return true;
   };
+  this.toXML = function(tracer) {
+    var indent = "    ";
+    var edges = this.getLinks();
+    var ordered = that.getGroupModel().getTopLevelGroup().getIsOrdered();
+    var result = '<?xml version="1.0" standalone="yes"?>\n';
+    result += '<stateGraph firstCheckAllStates = "true"';
+    result += ' caseInsensitive="' + that.getCaseInsensitive();
+    result += '" unordered="' + !ordered;
+    result += '" lockWidget="' + that.getLockWidget();
+    result += '" hintPolicy="' + that.getHintPolicy();
+    result += '" version="4.0';
+    result += '" suppressStudentFeedback="' + that.isFeedbackSuppressed();
+    result += '" highlightRightSelection="' + that.isHighlightRightSelection();
+    result += '" startStateNodeName="' + that.getStudentBeginsHereNameForBRD();
+    result += '" tutorType="Example-tracing Tutor">\n';
+    result += startStateMsgsToXML(this.getStartStateMsgs(), indent) + "\n";
+    for (var z = 0;z < nodes.length;z++) {
+      result += nodes[z].toXML(indent) + "\n";
+    }
+    for (var y = 0;y < edges.length;y++) {
+      result += edges[y].toXML(indent) + "\n";
+    }
+    result += skillsToXML(tracer, indent);
+    result += EdgesGroupsToXML(indent);
+    result += "</stateGraph>\n";
+    return result;
+  };
+  function skillsToXML(tracer, indent) {
+    var skills = tracer.getGraphSkills();
+    var result = "";
+    for (var x = 0;x < skills.length;x++) {
+      result += indent + "<productionRule>\n";
+      result += indent + "    <ruleName>" + CTATExampleTracerSkill.getName(skills[x].getSkillName()) + "</ruleName>\n";
+      result += indent + "    <productionSet>" + skills[x].getCategory() + "</productionSet>\n";
+      result += indent + "    <label>" + skills[x].getLabel() + "</label>\n";
+      result += indent + "    <description>" + skills[x].getDescription() + "</description>\n";
+      result += indent + "</productionRule>\n";
+    }
+    return result;
+  }
+  function EdgesGroupsToXML(indent) {
+    var gm = that.getGroupModel();
+    var topGroup = gm.getTopLevelGroup();
+    var result = "";
+    var topKids = topGroup.getSubgroups();
+    result = indent + '<EdgesGroups ordered="' + topGroup.getIsOrdered() + '">\n';
+    topKids.forEach(function(sg) {
+      result += sg.toXML(indent + "    ", gm);
+    });
+    result += indent + "</EdgesGroups>\n";
+    return result;
+  }
+  this.addGroup = function(name, isOrdered, links) {
+  };
+  this.getCaseInsensitive = function() {
+    return caseInsensitive;
+  };
+  this.setCaseInsensitive = function(CI) {
+    caseInsensitive = CI;
+  };
+  this.getLockWidget = function() {
+    return lockWidget;
+  };
+  this.setLockWidget = function(LoWi) {
+    lockWidget = LoWi;
+  };
+  this.getHintPolicy = function() {
+    return hintPolicy;
+  };
+  this.setHintPolicy = function(thePolicy) {
+    hintPolicy = CTATHintPolicyEnum.lookup(thePolicy);
+  };
+  this.isFeedbackSuppressed = function() {
+    return feedbackSuppressed;
+  };
+  this.setFeedbackSuppressed = function(policy) {
+    if (policy === "false") {
+      feedbackSuppressed = false;
+    } else {
+      if (policy === "true") {
+        feedbackSuppressed = true;
+      } else {
+        if (policy === CTATMsgType.SHOW_ALL_FEEDBACK) {
+          feedbackSuppressed = false;
+        } else {
+          if (policy === CTATMsgType.HIDE_ALL_FEEDBACK) {
+            feedbackSuppressed = true;
+          } else {
+            if (policy === CTATMsgType.HIDE_BUT_ENFORCE) {
+              feedbackSuppressed = true;
+            } else {
+              if (policy === CTATMsgType.HIDE_BUT_COMPLETE) {
+                feedbackSuppressed = true;
+              } else {
+                if (policy === CTATMsgType.DELAY_FEEDBACK) {
+                  feedbackSuppressed = false;
+                } else {
+                  feedbackSuppressed = false;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    that.ctatdebug("setFeedbackSuppressed(" + policy + "): " + feedbackSuppressed);
+    if (problemSummary) {
+      problemSummary.setCountOnlyLastResults(feedbackSuppressed);
+    }
+  };
+  this.isHighlightRightSelection = function() {
+    return highlightRightSelection;
+  };
+  this.setHighlightRightSelection = function(b) {
+    highlightRightSelection = b;
+  };
+  function startStateMsgsToXML(ssm, indent) {
+    var result = indent + "<startNodeMessages>\n";
+    for (var z = 0;z < ssm.length;z++) {
+      result += indent + indent + ssm[z].outerHTML + "\n";
+    }
+    result += indent + "</startNodeMessages>";
+    return result;
+  }
+  this.getStartStateMsgs = function() {
+    return startStateMsgs;
+  };
+  this.setStartStateMsgs = function(ssm) {
+    startStateMsgs = ssm;
+  };
   this.getNode = function(nodeID) {
     that.ctatdebug("CTATExampleTracerGraph --\x3e in getNode(" + nodeID + ") returning " + nodeMap[nodeID]);
     return nodeMap[nodeID];
@@ -27600,8 +32007,11 @@ CTATExampleTracerGraph = function(isUnordered, youStartYouFinish, givenVT) {
     startNode = node;
   };
   this.getStudentStartsHereNode = function() {
-    that.ctatdebug("CTATExampleTracerGraph --\x3e getStudentStartsHereNode() returns " + studentStartsHereNode);
-    return studentStartsHereNode;
+    if (studentStartsHereNode != null) {
+      return studentStartsHereNode;
+    } else {
+      return getStartNode();
+    }
   };
   this.setStudentStartsHereNode = function(node) {
     that.ctatdebug("CTATExampleTracerGraph --\x3e in setStudentStartsHereNode(" + node + ")");
@@ -27650,9 +32060,18 @@ CTATExampleTracerGraph = function(isUnordered, youStartYouFinish, givenVT) {
   this.getDoneLinks = function() {
     return doneLinks;
   };
+  this.getStudentBeginsHereNameForBRD = function() {
+    if (studentStartsHereNode != null) {
+      return studentStartsHereNode.getName();
+    } else {
+      return CTATExampleTracerGraph.STUDENT_BEGINS_HERE_VAR;
+    }
+  };
   initGraph(!isUnordered, youStartYouFinish);
 };
 Object.defineProperty(CTATExampleTracerGraph, "TOP_LEVEL", {enumerable:false, configurable:false, writable:false, value:"Top Level"});
+Object.defineProperty(CTATExampleTracerGraph, "STUDENT_BEGINS_HERE_VAR", {enumerable:false, configurable:false, writable:false, value:"%(startStateNodeName)%"});
+Object.defineProperty(CTATExampleTracerGraph, "IS_ORDERED", {enumerable:false, configurable:false, writable:false, value:"ordered"});
 CTATExampleTracerGraph.prototype = Object.create(CTATBase.prototype);
 CTATExampleTracerGraph.prototype.constructor = CTATExampleTracerGraph;
 if (typeof module !== "undefined") {
@@ -27692,6 +32111,9 @@ CTATGraphParser = function() {
   this.getLockWidget = function() {
     return lockWidget;
   };
+  this.setLockWidget = function(LoWi) {
+    lockWidget = LoWi;
+  };
   this.parseGraph = function(stateGraph, tracer) {
     ctatdebug("parseBRD()");
     var nodeCount = 0;
@@ -27699,8 +32121,11 @@ CTATGraphParser = function() {
     var isUnordered = parser.getElementAttr(stateGraph, "unordered") === "true";
     caseInsensitive = String(parser.getElementAttr(stateGraph, "caseInsensitive")).toLowerCase() != "false";
     lockWidget = parser.getElementAttr(stateGraph, "lockWidget");
+    hintPolicy = parser.getElementAttr(stateGraph, "hintPolicy");
+    feedbackSuppressed = parser.getElementAttr(stateGraph, "suppressStudentFeedback");
     var vt = new CTATVariableTable;
     graph = new CTATExampleTracerGraph(isUnordered, false, vt);
+    graph.setCaseInsensitive(caseInsensitive);
     var rootChildren = parser.getElementChildren(stateGraph);
     var feedbackPolicy = parser.getElementAttr(stateGraph, "suppressStudentFeedback");
     if (feedbackPolicy === null || feedbackPolicy === undefined) {
@@ -27725,6 +32150,7 @@ CTATGraphParser = function() {
       switch(parser.getElementName(rootChildren[index])) {
         case "startNodeMessages":
           startStateMsgs = parser.getElementChildren(rootChildren[index]);
+          graph.setStartStateMsgs(startStateMsgs);
           break;
         case "node":
           nodeCount++;
@@ -27758,7 +32184,8 @@ CTATGraphParser = function() {
       ctatdebug("parseGraph() value of isUnordered = " + isUnordered);
       ctatdebug("parseGraph() typeof isOrdered: " + typeof isOrdered);
       ctatdebug("parseGraph()typeof isUnordered: " + typeof isUnordered);
-      processGroup(edgesGroupsElt, isOrdered);
+      var EdGr = processGroup(edgesGroupsElt, isOrdered);
+      graph.addGroup(EdGr);
     }
     var skillBarVector = tracer.getSkillBarVector(false, true);
     if (!skillBarVector || skillBarVector.length < 1) {
@@ -27800,7 +32227,7 @@ CTATGraphParser = function() {
       }
     }
     if (!name) {
-      return;
+      return null;
     }
     var skill = new CTATExampleTracerSkill(category, name, CTATExampleTracerSkill.DEFAULT_P_GUESS, CTATExampleTracerSkill.DEFAULT_P_KNOWN, CTATExampleTracerSkill.DEFAULT_P_SLIP, CTATExampleTracerSkill.DEFAULT_P_LEARN, CTATExampleTracerSkill.DEFAULT_HISTORY);
     if (label != null) {
@@ -27814,6 +32241,7 @@ CTATGraphParser = function() {
       skill.setDescription(name + (category ? " " + category : ""));
     }
     graphSkills.push(skill);
+    return skill;
   }
   function processEdge(edgeElement) {
     ctatdebug("processEdge()");
@@ -27851,6 +32279,7 @@ CTATGraphParser = function() {
           }
           if (parser.getElementName(actionLabelChildren[jndex]) === "message") {
             saiMessage = new CTATMessage(actionLabelChildren[jndex]);
+            edge.setDemoMsgObj(saiMessage);
           }
           if (parser.getElementName(actionLabelChildren[jndex]) === "actionType") {
             edge.setActionType(parser.getNodeTextValue(actionLabelChildren[jndex]));
@@ -28054,7 +32483,7 @@ CTATGraphParser = function() {
   function processNode(element) {
     ctatdebug("processNode(" + element + ")");
     var children = parser.getElementChildren(element);
-    var nodeID = -1, nodeName = "";
+    var nodeID = -1, nodeName = "", d = [];
     for (var index = 0;index < children.length;index++) {
       var childName = parser.getElementName(children[index]);
       switch(childName) {
@@ -28064,11 +32493,22 @@ CTATGraphParser = function() {
         case "text":
           nodeName = parser.getNodeTextValue(children[index]);
           break;
+        case "dimension":
+          var childrens = parser.getElementChildren(children[index]);
+          for (var dndex = 0;dndex < childrens.length;dndex++) {
+            ctatdebug("grandkids " + dndex + ", " + childrens[dndex] + ", " + parser.getNodeTextValue(childrens[dndex]) + ", " + parseInt(parser.getNodeTextValue(childrens[dndex])));
+            d[dndex] = parseInt(parser.getNodeTextValue(childrens[dndex]));
+          }
+          ctatdebug("grandkids d " + d);
+          break;
       }
     }
     var node = new CTATExampleTracerNode(nodeID, new Set);
     if (nodeName !== "") {
       node.setNodeName(nodeName);
+    }
+    if (d.length >= 2) {
+      node.setDimension({x:d[0], y:d[1]});
     }
     return node;
   }
@@ -28292,11 +32732,16 @@ CTATProblemStateStatus.prototype.transition = function(msgType, problemStateStat
       if (this.getStatus() == CTATProblemStateStatus.incompleteStartState) {
         this.setStatus(CTATProblemStateStatus.incomplete);
       } else {
-        this.setStatus(CTATProblemStateStatus.normalFeedback);
+        if (this.getStatus() == CTATProblemStateStatus.incomplete) {
+          this.setStatus(CTATProblemStateStatus.incomplete);
+        } else {
+          this.setStatus(CTATProblemStateStatus.normalFeedback);
+        }
       }
       break;
     case CTATMsgType.PROBLEM_RESTORE_END:
-    ;
+      this.setStatus(CTATProblemStateStatus.normalFeedback);
+      break;
     case CTATMsgType.END_GO_TO_STATE:
       this.setStatus(CTATProblemStateStatus.normalFeedback);
       break;
@@ -28959,6 +33404,15 @@ CTATSkills = function(skillList) {
     sb += escape ? "&lt;/Skills&gt;" : "</Skills>";
     return sb;
   };
+  this.getAllSkills = function() {
+    var result = [];
+    for (var sk in skillMap) {
+      if (skillMap.hasOwnProperty(sk) && skillMap[sk]) {
+        result.push(skillMap[sk]);
+      }
+    }
+    return result;
+  };
   this.updateSkill = function(transactionResult, skillName, stepID) {
     var result = null;
     var skill = that.getSkill(skillName);
@@ -29020,6 +33474,7 @@ goog.require("CTATBase");
 goog.require("CTATCommLibrary");
 goog.require("CTATMsgType");
 goog.require("CTAT.ToolTutor");
+goog.require("CTATMessage");
 goog.require("CTATLMS");
 ProblemStateSaver = function(tracer) {
   CTATBase.call(this, "ProblemStateSaver", tracer);
@@ -29036,13 +33491,7 @@ ProblemStateSaver = function(tracer) {
     result["session_id"] = tracer.getSessionID();
     result["authenticity_token"] = authenticity_token;
     result["summary"] = ps.toXML(false);
-    result["problem_state"] = ProblemStateSaver.MESSAGES_TAG;
-    for (var i = 0;i < problemState.length;++i) {
-      if (problemState[i]) {
-        result["problem_state"] += problemState[i];
-      }
-    }
-    result["problem_state"] += ProblemStateSaver.MESSAGES_TAG.replace("<", "</");
+    result["problem_state"] = ProblemStateSaver.xmlToJSON(problemState);
     return result;
   }
   this.saveAsYouGo = function(ps) {
@@ -29189,6 +33638,54 @@ ProblemStateSaver.makeStepKey = function(sai) {
   action = typeof action != "string" || action.length < 1 ? " " : action;
   return selection + " " + action;
 };
+ProblemStateSaver.jsonToXML = function(problemState) {
+  if (typeof problemState != "string" || problemState.charAt(0) != "[") {
+    return [];
+  }
+  var parseResult = [];
+  try {
+    parseResult = JSON.parse(problemState);
+  } catch (e$25) {
+    console.log("ProblemStateSaver.jsonToXML() error", e$25, "problemState", problemState);
+    return [];
+  }
+  var result = [];
+  parseResult.forEach(function(mo, i) {
+    console.log("ProblemStateSaver.jsonToXML[" + i + "] mo", mo);
+    var msg = "<message><verb>NotePropertySet</verb><properties><MessageType>";
+    msg += mo.m == "U" ? CTATMsgType.UNTUTORED_ACTION : CTATMsgType.INTERFACE_ACTION;
+    msg += "</MessageType><transaction_id>" + CTATMessage.makeTransactionId();
+    msg += "</transaction_id><Selection><value>" + mo.s;
+    msg += "</value></Selection><Action><value>" + mo.a;
+    msg += "</value></Action><Input><value><![CDATA[" + decodeURIComponent(mo.i);
+    msg += "]]\x3e</value></Input></properties></message>";
+    result.push(msg);
+  });
+  return result;
+};
+ProblemStateSaver.xmlToJSON = function(problemState) {
+  var toStringify = [];
+  problemState.forEach(function(msg, i) {
+    console.log("ProblemStateSaver.xmlToJSON[" + i + "] msg", msg);
+    if (msg) {
+      var mo = {}, saiElt = null;
+      mo.m = CTATMsgType.getMessageType(msg) == CTATMsgType.UNTUTORED_ACTION ? "U" : "I";
+      mo.s = (saiElt = CTATMsgType.getValue(CTATMsgType.getProperty(msg, "Selection"), 0)) ? saiElt : "";
+      mo.a = (saiElt = CTATMsgType.getValue(CTATMsgType.getProperty(msg, "Action"), 0)) ? saiElt : "";
+      saiElt = CTATMsgType.getValue(CTATMsgType.getProperty(msg, "Input"), 0);
+      var inputVal = saiElt.replace(/^<!\[CDATA\[([^\]]*)\]\]>$/, "$1");
+      mo.i = encodeURIComponent(inputVal);
+      console.log("ProblemStateSaver.xmlToJSON[" + i + "]  mo", mo);
+      toStringify.push(mo);
+    }
+  });
+  try {
+    return JSON.stringify(toStringify);
+  } catch (e$26) {
+    console.log("ProblemStateSaver.xmlToJSON() error", e$26, "toStringify", toStringify);
+    return "";
+  }
+};
 if (typeof module !== "undefined") {
   module.exports = ProblemStateSaver;
 }
@@ -29217,16 +33714,25 @@ ProblemStateRestorer = function(exTracer) {
     if (typeof problemState != "string") {
       return restoreMsgs;
     }
-    var msgsArr = problemState.split(/<\/?messages>/);
-    that.ctatdebug("msgsArr.length " + msgsArr.length + ", msgsArr[1].length " + (msgsArr[1] ? msgsArr[1].length : -1));
-    if (msgsArr.length < 2) {
-      return restoreMsgs;
+    var problemStateArr = [], toRestore = "";
+    if (problemState.charAt(0) == "[") {
+      problemStateArr = ProblemStateSaver.jsonToXML(problemState);
+    } else {
+      var msgsArr = problemState.split(/<\/?messages>/);
+      that.ctatdebug("msgsArr.length " + msgsArr.length + ", msgsArr[1].length " + (msgsArr[1] ? msgsArr[1].length : -1));
+      if (msgsArr.length < 2) {
+        return restoreMsgs;
+      }
+      toRestore = "<message>";
+      problemStateArr = msgsArr[1].split(toRestore);
     }
-    var problemStateArr = msgsArr[1].split("<message>");
     that.ctatdebug("problemStateArr.length " + problemStateArr.length);
     var omitCount = 0, omitting = false;
-    for (var i = 1;i < problemStateArr.length;++i) {
-      var restoreMsg = "<message>" + problemStateArr[i];
+    for (var i = 0;i < problemStateArr.length;++i) {
+      if (!problemStateArr[i]) {
+        continue;
+      }
+      var restoreMsg = toRestore + problemStateArr[i];
       var msgType = CTATMsgType.getMessageType(restoreMsg);
       if (CTATMsgType.STATE_GRAPH == msgType) {
         omitting = true;
@@ -29274,12 +33780,12 @@ ProblemStateRestorer = function(exTracer) {
   };
   this.process = function(problemState) {
     tracer.getOutputStatus().transition(CTATMsgType.BEGIN_RESTORE);
-    if (typeof problemState != "string") {
-      console.log("ProblemStateRestorer.process() called with parameter not a string: ", typeof problemState);
+    if (typeof problemState != "string" || problemState == "") {
+      console.log("ProblemStateRestorer.process(" + problemState + ") empty or not a string: ", typeof problemState);
       tracer.enqueueForRestore([]);
       return;
     }
-    if (problemState.slice(0, ProblemStateSaver.MESSAGES_TAG.length) != ProblemStateSaver.MESSAGES_TAG) {
+    if (problemState.charAt(0) != "[" && problemState.slice(0, ProblemStateSaver.MESSAGES_TAG.length) != ProblemStateSaver.MESSAGES_TAG) {
       console.log("ProblemStateRestorer.process() called with unrecognized string, to try htmlDecode(): ", problemState.slice(0, 20));
       problemState = htmlDecode(problemState);
       if (problemState.slice(0, ProblemStateSaver.MESSAGES_TAG.length) != ProblemStateSaver.MESSAGES_TAG) {
@@ -29392,7 +33898,7 @@ CTATExampleTracer = function() {
   var problemStateSaver = new ProblemStateSaver(that);
   problemStateSaver.setAuthenticityToken(CTATCommLibrary.getAuthenticityToken());
   var problemStateRestorer = null;
-  var workOrRestoreQueue = 0;
+  var workOrRestoreQueue = 1;
   var outputStatus = new CTATProblemStateStatus;
   var restoreQueue = [];
   var workQueue = [];
@@ -29410,7 +33916,7 @@ CTATExampleTracer = function() {
   var tracerCommLibrary = new CTATCommLibrary;
   this.receiveFromInterface = function(aMessage) {
     that.ctatdebug("CTATExampleTracer.receiveFromInterface() \n  " + aMessage);
-    workQueue.push(aMessage);
+    (/<MessageType>SetPreferences<.MessageType>/i.test(aMessage) ? restoreQueue : workQueue).push(aMessage);
     workTheQueue();
   };
   this.setVariablesFromSAI = function(xml, parser) {
@@ -29443,15 +33949,17 @@ CTATExampleTracer = function() {
     if (restoreMsgTexts == null && restoreMsgs != null) {
       restoreMsgTexts = restoreMsgs;
     }
-    if (!tracerReady() || restoreMsgTexts == null) {
+    if (restoreMsgTexts == null) {
       return;
     }
     restoreQueue = restoreQueue.concat(restoreMsgTexts);
+    restoreMsgTexts = null;
     var endMsg = (new CTATTutorMessageBuilder).createMessage(CTATMsgType.PROBLEM_RESTORE_END, null);
     restoreQueue.push(endMsg);
     workOrRestoreQueue = 1;
-    that.startWorking();
-    restoreMsgTexts = null;
+    if (tracerReady()) {
+      that.startWorking();
+    }
   };
   this.restartWorking = function() {
     if (tutorType === "rule") {
@@ -29703,6 +34211,7 @@ CTATExampleTracer = function() {
       destNodeID = sshn ? sshn.getNodeID() : noopNodeID;
     }
     if (destNodeID == noopNodeID) {
+      console.trace("CTATExampleTracer.resetGoToState to transition1 destNodeID == noopNodeID", noopNodeID);
       outputStatus.transition(msgType, problemStateStatus);
     } else {
       if (destNodeID > 0) {
@@ -29711,7 +34220,7 @@ CTATExampleTracer = function() {
     }
     that.ctatdebug("CTATET.resetGoToState(" + msgType + ", " + problemStateStatus + ", " + noopNodeID + ") returns " + destNode);
     if (!destNode) {
-      outputStatus.transition(CTATMsgType.END_GO_TO_STATE, null);
+      console.trace("CTATExampleTracer.resetGoToState to transition2 destNode", noopNodeID);
     }
     return destNode;
   }
@@ -29762,8 +34271,8 @@ CTATExampleTracer = function() {
         endStartStateBundle.push(msgBuilder.createMessage(CTATMsgType.PROBLEM_RESTORE_END, null));
       }
       that.sendBundle(endStartStateBundle);
-      that.startWorking();
       that.enqueueForRestore();
+      that.startWorking();
     };
     ruleTracer = new CTATRuleTracer("nools", that);
     ruleTracer.initEngine(noolsFile, function(startStateMsgs, stateGraphMsg) {
@@ -29924,6 +34433,13 @@ CTATExampleTracer = function() {
       that.getProblemSummary().setSkills(skillsFromGraph);
     }
   };
+  this.getGraphSkills = function() {
+    var skills = that.getProblemSummary().getSkills();
+    if (!skills) {
+      return [];
+    }
+    return skills.getAllSkills();
+  };
   this.sendBundle = function(msgs) {
     that.ctatdebug("sending bundle #msgs = " + msgs.length + ", outputStatus " + outputStatus);
     var count = 0;
@@ -29938,6 +34454,9 @@ CTATExampleTracer = function() {
       }
     }
     return count > 0;
+  };
+  this.getHintPolicy = function() {
+    return hintPolicy;
   };
   this.setHintPolicy = function(thePolicy) {
     hintPolicy = CTATHintPolicyEnum.lookup(thePolicy);
@@ -30072,14 +34591,14 @@ CTATExampleTracer = function() {
   };
   function createBuggyMessage(resultEvent, hintResult, msgBuilder) {
     var rtn = {tutorAdvice:null, msg:null, msgType:null};
+    rtn.tutorAdvice = resultEvent.getSuccessOrBuggyMsg();
+    if (rtn.tutorAdvice && rtn.tutorAdvice.trim()) {
+      rtn.msg = msgBuilder.createBuggyMessage(resultEvent.getTransactionID(), rtn.tutorAdvice);
+      rtn.msgType = "BuggyMessage";
+    } else {
+      rtn.tutorAdvice = null;
+    }
     if (resultEvent.isBuggyResult()) {
-      rtn.tutorAdvice = resultEvent.getSuccessOrBuggyMsg();
-      if (rtn.tutorAdvice && rtn.tutorAdvice.trim()) {
-        rtn.msg = msgBuilder.createBuggyMessage(resultEvent.getTransactionID(), rtn.tutorAdvice);
-        rtn.msgType = "BuggyMessage";
-      } else {
-        rtn.tutorAdvice = null;
-      }
       return rtn;
     }
     that.ctatdebug("CTATET.createBuggyMessage() past getReportableLink()");
@@ -30301,10 +34820,13 @@ CTATExampleTracer = function() {
     var skillNames = result.getAssociatedSkills() || [];
     var finishUp = function() {
       that.lastResult = result;
+      if (that.getTracer() && typeof that.getTracer().saveLastReport == "function") {
+        that.getTracer().saveLastReport(result);
+      }
       var ps = that.getProblemSummary(result.getReportableInterpretation());
       that.ctatdebug("finishNewExampleTrace() to flushMessageTank");
       that.messageTank.flushMessageTank(ps, true);
-      that.ctatdebug("finishNewExampleTrace() sent result " + result.getResult() + ", studentSAI " + studentSAI);
+      that.ctatdebug("finishNewExampleTrace() sent result " + result.getResult() + ",\n studentSAI " + studentSAI + ",\n tutorSAI " + result.getTutorSAI() + ",\n successOrBuggyMsg " + result.getSuccessOrBuggyMsg());
       return result;
     };
     if (result.isSolverResult()) {

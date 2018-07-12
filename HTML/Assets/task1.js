@@ -39,7 +39,7 @@ function buildJSON(graph, edgeFreqs) {
                 style: {
                     //'line-color': 'green',
                     'label': 'data(info)',
-                    'width': 'mapData(freq, 0, '+maxFreq+', 1, 20)',
+                    'width': 'mapData(freq, 0, 1, 1, 20)',
                     'target-arrow-shape': 'triangle',
                     'curve-style': 'bezier',
                     'min-zoomed-font-size': '10'
@@ -116,9 +116,11 @@ function buildJSON(graph, edgeFreqs) {
         addEdge(jsonGraph, links[i].getUniqueID(), prevId, nextId, 
                 matcher.getSelection(), matcher.getAction(), matcher.getInput(), freq, maxFreq);
     }
+    BRDjson = jsonGraph;
 
     return JSON.stringify(jsonGraph);
-}
+} 
+var BRDjson = null; 
 
 function addNode(jsonGraph, id, x, y) {
     if (x == null) {
