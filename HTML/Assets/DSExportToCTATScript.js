@@ -60,6 +60,7 @@ function addPathToBG(correct) {
     //cy2.fit();
 }
 
+
 function getSelectedPath() {
     console.log("called");
     //get all selected nodes
@@ -428,6 +429,13 @@ function runTask1GivenJSON(ggraph) {
                     nestingFactor: 1.2,
                     gravity: 0.1
                  });
+
+        layout.pon('layoutstop').then(function( event ){
+            cy.nodes().positions(function(node, i){
+                return CTAT.ToolTutor.tutor.getGraph().getNode(node.data().id).getDimension();
+                });
+            });
+
     layout.run();
 
 
@@ -461,6 +469,8 @@ function runTask1GivenJSON(ggraph) {
             getSelectedPath();
     });
 
+
+
     document.getElementById("N_form").value = allPaths.length
     document.getElementById("N_form").text = allPaths.length
 
@@ -489,6 +499,7 @@ function runTask1GivenJSON(ggraph) {
             break;
         }
     }
+
     if(ggraph) 
         return;
     document.getElementById("numStudentsProblem").value = Object.entries(problemsAndPaths[problems[chosenProblem]]).length;
