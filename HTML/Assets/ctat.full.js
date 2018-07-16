@@ -3759,6 +3759,56 @@ CTATSequencer = function() {
   var retriever = null;
   var algorithm = "sequential";
   var sequenceReadyHandler = null;
+  var lms = null;
+  var currentProblemIndex = -1;
+  this.setLMSSequencer = function(lmsSequencer) {
+    lms = lmsSequencer;
+  };
+  this.loadProblem = function(problemToLoad) {
+    olidebug("sequenceLoadProblem() problemToLoad " + problemToLoad);
+    if (!problemToLoad) {
+      return false;
+    }
+    var tutorIFrame = document.getElementById("ctat-tutor");
+    console.trace("loadProblem() problemToLoad", problemToLoad, "tutorIFrame", tutorIFrame);
+    if (!tutorIFrame) {
+      return false;
+    }
+    var re = new RegExp("^(.*/)?(.*)$");
+    var qf = problemToLoad.getProblemFile();
+    var si = problemToLoad.getStudentInterface();
+    tutorIFrame.setAttribute("data-params", '{"question_file":"' + qf + '","brdName":"' + qf.replace(re, "$2") + '","student_interface":"' + si + '"}');
+    tutorIFrame.src = si;
+    tutorIFrame.width = parseInt(window.frameElement.width) - 4;
+    tutorIFrame.height = parseInt(window.frameElement.height) - 4;
+    Initialize_CTAT_OLI.CTATConfiguration.question_file = qf;
+    Initialize_CTAT_OLI.CTATConfiguration.brdName = Initialize_CTAT_OLI.CTATConfiguration.question_file;
+    Initialize_CTAT_OLI.CTATConfiguration = problemToLoad.getStudentInterface();
+    tutorIFrame.addEventListener("load", Initialize_CTAT_OLI.onLoadListener);
+    return true;
+  };
+  this.loadNextProblem = function(callAtStart) {
+    olidebug("loadNextProblem() pointer.getCurrentProblemIndex() " + pointer.getCurrentProblemIndex());
+    console.log("loadNextProblem() pointer.getCurrentProblemIndex()", pointer.getCurrentProblemIndex(), callAtStart);
+    var np = pointer.getProblem(pointer.advanceCurrentProblemIndex());
+    if (!np) {
+      return false;
+    } else {
+      if (!callAtStart) {
+        return pointer.loadProblem(np);
+      } else {
+        return callAtStart(pointer.getCurrentProblemIndex()).then(function() {
+          return pointer.loadProblem(np);
+        });
+      }
+    }
+  };
+  this.getCurrentProblemIndex = function() {
+    return lms && lms.getCurrentProblemIndex ? lms.getCurrentProblemIndex() : currentProblemIndex;
+  };
+  this.advanceCurrentProblemIndex = function() {
+    return lms && lms.advanceCurrentProblemIndex ? lms.advanceCurrentProblemIndex() : ++currentProblemIndex;
+  };
   this.setAlgorithm = function setAlgorithm(anAlgorithm) {
     algorithm = anAlgorithm;
   };
@@ -3769,23 +3819,32 @@ CTATSequencer = function() {
     pointer.ctatdebug("handlePackageRetrieval ()");
     packageManager.init(aData);
     if (sequenceReadyHandler != null) {
-      sequenceReadyHandler(packageManager);
+      sequenceReadyHandler(packageManager, currentIndex);
     }
   };
   this.processXML = function processXML(aRoot) {
     pointer.ctatdebug("parseXML ()");
     packageManager.init(aRoot);
     if (sequenceReadyHandler != null) {
-      sequenceReadyHandler(packageManager);
+      sequenceReadyHandler(packageManager, currentIndex);
     }
   };
-  this.init = function init(aPackageURL, aHandler, aURLPrefix) {
-    useDebuggingBasic = true;
-    pointer.ctatdebug("init (" + aPackageURL + ", " + aHandler + ", " + aURLPrefix + ")");
+  this.init = function init(aPackageURL, currentIndex, aHandler, aURLPrefix) {
+    pointer.ctatdebug("init (" + aPackageURL + ", " + currentIndex + ", " + aHandler + ", " + aURLPrefix + ")");
     packageManager.setURLPrefix(aURLPrefix);
-    sequenceReadyHandler = aHandler;
+    sequenceReadyHandler = aHandler ? aHandler : pointer.ready;
+    currentProblemIndex = currentIndex;
     retriever = new CTATCommLibrary(null, false);
     retriever.retrieveXMLFile(aPackageURL, parser, this);
+  };
+  this.ready = function() {
+    olidebug("CTATSequencer.ready ()");
+    var firstProblem = pointer.getProblem(pointer.getCurrentProblemIndex());
+    if (firstProblem != null) {
+      pointer.loadProblem(firstProblem);
+    } else {
+      document.getElementById("ctat-tutor").contentWindow.document.write("<html><body>Error: unable to retrieve first problem in sequence!</body></html>");
+    }
   };
   this.getSequenceType = function() {
     return "fixed";
@@ -3828,8 +3887,8 @@ CTATSequencer = function() {
     }
     return null;
   };
-  this.getNextProblem = function getNextProblem(currentIndex) {
-    pointer.ctatdebug("getNextProblem ()");
+  this.getProblem = function(currentIndex) {
+    pointer.ctatdebug("getProblem(" + currentIndex + ")");
     var pSets = packageManager.getProblemSets();
     if (pSets.length == 0) {
       pointer.ctatdebug("Error: no problem sets available, trying list of problems directly ...");
@@ -16767,6 +16826,37 @@ CTATTutor.runTutor = function() {
   CTATGlobals.tutorRunning = true;
   ctatdebug("runTutor () ... all set");
 };
+var idleTime = 0;
+CTATTutor.setIdleTimeout = function() {
+  var idleInterval = setInterval(CTATTutor.timerIncrement, 6E4);
+  $(document).mousemove(function(e) {
+    idleTime = 0;
+  });
+  $(document).keypress(function(e) {
+    idleTime = 0;
+  });
+};
+CTATTutor.timerIncrement = function() {
+  if (idleTime < 0) {
+    return;
+  }
+  var tutorTimeout = 19;
+  var session_timeout = CTATConfiguration.get("session_timeout");
+  if (session_timeout) {
+    if (isNaN(session_timeout)) {
+      tutorTimeout = parseInt(session_timeout);
+    } else {
+      tutorTimeout = session_timeout;
+    }
+  }
+  idleTime = idleTime + 1;
+  if (idleTime > tutorTimeout) {
+    idleTime = -1;
+    CTATScrim.scrim.OKScrimUp("The tutor timed out due to inactivity, click 'Close' to reload the page.", function() {
+      window.location.reload();
+    });
+  }
+};
 CTATTutor.initTutor = function(aFlashVars, aDiv, aCanvas, usingFlash) {
   ctatdebug("initTutor() #aFlashVars " + (aFlashVars ? aFlashVars.length : null) + ", usingFlash " + usingFlash);
   if (CTATTutor.tutorInitialized == true) {
@@ -16777,6 +16867,7 @@ CTATTutor.initTutor = function(aFlashVars, aDiv, aCanvas, usingFlash) {
     }
     return;
   }
+  CTATTutor.setIdleTimeout();
   CTATConfiguration.generateDefaultConfigurationObject(aFlashVars, typeof CTATTarget == "undefined" ? undefined : CTATTarget);
   switch(CTATConfiguration.get("show_debug_traces")) {
     case "true":
@@ -16849,6 +16940,7 @@ CTATTutor.initTutor = function(aFlashVars, aDiv, aCanvas, usingFlash) {
   if (!usingFlash) {
     CTATTutor.runTutor();
   }
+  CTATTutor.setIdleTimeout();
   CTATTutor.tutorInitialized = true;
 };
 if (!window.hasOwnProperty("initTutor")) {
@@ -29924,9 +30016,16 @@ CTATExampleTracerEvent = function(givenSource, givenStudentSAI, givenActor) {
   var interpolatedHints = null;
   var that = this;
   var indicator = null;
+  var msgToRestore = null;
   var associatedRules = [];
   var associatedSkills = [];
   var customFields = {};
+  this.getMsgToRestore = function() {
+    return msgToRestore;
+  };
+  this.setMsgToRestore = function(m) {
+    msgToRestore = m;
+  };
   this.getActor = function() {
     return actor;
   };
@@ -31288,6 +31387,7 @@ CTATExampleTracerGraph = function(isUnordered, youStartYouFinish, givenVT) {
   var nodeMap = null;
   var startNode = null;
   var studentStartsHereNode = null;
+  var studentStartStateNodeName = "";
   var startStateMsgs = [];
   var doneStates = new Set;
   var doneLinks = new Set;
@@ -31581,9 +31681,6 @@ CTATExampleTracerGraph = function(isUnordered, youStartYouFinish, givenVT) {
     }
     return true;
   }
-  this.getAllNodes = function() {
-    return addedNodes;
-  };
   function buildInLinks() {
     for (var i = 0;i < nodes.length;i++) {
       nodes[i].clearInLinks();
@@ -31786,7 +31883,7 @@ CTATExampleTracerGraph = function(isUnordered, youStartYouFinish, givenVT) {
     var edges = this.getLinks();
     var ordered = that.getGroupModel().getTopLevelGroup().getIsOrdered();
     var result = '<?xml version="1.0" standalone="yes"?>\n';
-    result += '<stateGraph firstCheckAllStates = "true"';
+    result += '<stateGraph firstCheckAllStates="true"';
     result += ' caseInsensitive="' + that.getCaseInsensitive();
     result += '" unordered="' + !ordered;
     result += '" lockWidget="' + that.getLockWidget();
@@ -31794,7 +31891,8 @@ CTATExampleTracerGraph = function(isUnordered, youStartYouFinish, givenVT) {
     result += '" version="4.0';
     result += '" suppressStudentFeedback="' + that.isFeedbackSuppressed();
     result += '" highlightRightSelection="' + that.isHighlightRightSelection();
-    result += '" startStateNodeName="' + that.getStudentBeginsHereNameForBRD();
+    result += '" confirmDone="' + tracer.getConfirmDone();
+    result += '" startStateNodeName="' + that.getStudentStartStateNodeName();
     result += '" tutorType="Example-tracing Tutor">\n';
     result += startStateMsgsToXML(this.getStartStateMsgs(), indent) + "\n";
     for (var z = 0;z < nodes.length;z++) {
@@ -32017,6 +32115,12 @@ CTATExampleTracerGraph = function(isUnordered, youStartYouFinish, givenVT) {
     that.ctatdebug("CTATExampleTracerGraph --\x3e in setStudentStartsHereNode(" + node + ")");
     studentStartsHereNode = node;
   };
+  this.setStudentStartStateNodeName = function(nodeName) {
+    studentStartStateNodeName = nodeName;
+  };
+  this.getStudentStartStateNodeName = function() {
+    return studentStartStateNodeName;
+  };
   this.getExampleTracer = function() {
     that.ctatdebug("CTATExampleTracerGraph --\x3e in getExampleTracer() returning " + exampleTracerTracer);
     return exampleTracerTracer;
@@ -32059,13 +32163,6 @@ CTATExampleTracerGraph = function(isUnordered, youStartYouFinish, givenVT) {
   };
   this.getDoneLinks = function() {
     return doneLinks;
-  };
-  this.getStudentBeginsHereNameForBRD = function() {
-    if (studentStartsHereNode != null) {
-      return studentStartsHereNode.getName();
-    } else {
-      return CTATExampleTracerGraph.STUDENT_BEGINS_HERE_VAR;
-    }
   };
   initGraph(!isUnordered, youStartYouFinish);
 };
@@ -32117,7 +32214,6 @@ CTATGraphParser = function() {
   this.parseGraph = function(stateGraph, tracer) {
     ctatdebug("parseBRD()");
     var nodeCount = 0;
-    var studentStartStateNodeName = parser.getElementAttr(stateGraph, "startStateNodeName");
     var isUnordered = parser.getElementAttr(stateGraph, "unordered") === "true";
     caseInsensitive = String(parser.getElementAttr(stateGraph, "caseInsensitive")).toLowerCase() != "false";
     lockWidget = parser.getElementAttr(stateGraph, "lockWidget");
@@ -32126,6 +32222,7 @@ CTATGraphParser = function() {
     var vt = new CTATVariableTable;
     graph = new CTATExampleTracerGraph(isUnordered, false, vt);
     graph.setCaseInsensitive(caseInsensitive);
+    graph.setStudentStartStateNodeName(parser.getElementAttr(stateGraph, "startStateNodeName"));
     var rootChildren = parser.getElementChildren(stateGraph);
     var feedbackPolicy = parser.getElementAttr(stateGraph, "suppressStudentFeedback");
     if (feedbackPolicy === null || feedbackPolicy === undefined) {
@@ -32135,14 +32232,8 @@ CTATGraphParser = function() {
     tracer.setFeedbackSuppressed(feedbackPolicy);
     var highlightRightSelection = parser.getElementAttr(stateGraph, "highlightRightSelection");
     tracer.setHighlightRightSelection(highlightRightSelection != "false");
-    var tracerConfirmDone = parser.getElementAttr(stateGraph, "confirmDone");
-    if (tracerConfirmDone !== "true" && tracerConfirmDone !== "false") {
-      if (graph.getFeedbackPolicy() === CTATMsgType.HIDE_ALL_FEEDBACK) {
-        tracerConfirmDone = "true";
-      } else {
-        tracerConfirmDone = "false";
-      }
-    }
+    var confirmDone = parser.getElementAttr(stateGraph, "confirmDone");
+    tracer.setConfirmDone(confirmDone === "true" ? true : confirmDone === "false" ? false : graph.getFeedbackPolicy() === CTATMsgType.HIDE_ALL_FEEDBACK);
     tracer.setHintPolicy(parser.getElementAttr(stateGraph, "hintPolicy"));
     tracer.setOutOfOrderMessage(parser.getElementAttr(stateGraph, "outOfOrderMessage"));
     var edgesGroupsElt = null;
@@ -32160,7 +32251,7 @@ CTATGraphParser = function() {
             graph.setStartNode(node);
             graph.setStudentStartsHereNode(node);
           }
-          if (node.getNodeName() == studentStartStateNodeName) {
+          if (node.getNodeName() == graph.getStudentStartStateNodeName()) {
             graph.setStudentStartsHereNode(node);
           }
           break;
@@ -32194,7 +32285,7 @@ CTATGraphParser = function() {
       skillBarVector = tracer.getSkillBarVector();
     }
     var msgBuilder = new CTATTutorMessageBuilder;
-    stateGraphMsg = msgBuilder.createStateGraphMessage(caseInsensitive, isUnordered, lockWidget, tracer.isSourceFlash() ? graph.exitOnIncorrectDone() : tracer.isFeedbackSuppressed(), highlightRightSelection, tracerConfirmDone, skillBarVector);
+    stateGraphMsg = msgBuilder.createStateGraphMessage(caseInsensitive, isUnordered, lockWidget, tracer.isSourceFlash() ? graph.exitOnIncorrectDone() : tracer.isFeedbackSuppressed(), highlightRightSelection, String(tracer.getConfirmDone()), skillBarVector);
     graph.redoLinkDepths();
     exampleTracerTracer = graph.getExampleTracer();
     exampleTracerTracer.resetTracer();
@@ -33890,6 +33981,7 @@ CTATExampleTracer = function() {
   var errorSAI = null;
   var groupModel;
   var hintPolicy;
+  var confirmDone = true;
   var highlightRightSelection = true;
   var feedbackSuppressed = false;
   var problemSummary = null;
@@ -34291,18 +34383,12 @@ CTATExampleTracer = function() {
     that.setFeedbackSuppressed(feedbackPolicy);
     var highlightRightSelection = configObj["highlightRightSelection"];
     that.setHighlightRightSelection(highlightRightSelection != "false");
-    var tracerConfirmDone = configObj["confirmDone"];
-    if (tracerConfirmDone !== "true" && tracerConfirmDone !== "false") {
-      if (feedbackPolicy === CTATMsgType.HIDE_ALL_FEEDBACK) {
-        tracerConfirmDone = "true";
-      } else {
-        tracerConfirmDone = "false";
-      }
-    }
+    var cConfirmDone = configObj["confirmDone"];
+    that.setConfirmDone(cConfirmDone === "true" ? true : cConfirmDone === "false" ? false : feedbackPolicy === CTATMsgType.HIDE_ALL_FEEDBACK);
     var lockWidget = configObj["lockWidget"];
     that.setHintPolicy(configObj["hintPolicy"]);
     that.setOutOfOrderMessage(configObj["outOfOrderMessage"]);
-    return msgBuilder.createStateGraphMessage(caseInsensitive, isUnordered, lockWidget, that.isFeedbackSuppressed(), highlightRightSelection, tracerConfirmDone, []);
+    return msgBuilder.createStateGraphMessage(caseInsensitive, isUnordered, lockWidget, that.isFeedbackSuppressed(), highlightRightSelection, String(that.getConfirmDone()), []);
   }
   function handleProblemSummaryRequest(ps) {
     that.ctatdebug("CTATExampleTracer.ProblemSummaryRequest getProblemSummary() " + that.getProblemSummary());
@@ -34425,6 +34511,12 @@ CTATExampleTracer = function() {
     }
     that.getProblemSummary().setSkills(new CTATSkills(skillList));
   }
+  this.setConfirmDone = function(b) {
+    confirmDone = b;
+  };
+  this.getConfirmDone = function() {
+    return confirmDone;
+  };
   this.addGraphSkills = function(graphSkills) {
     that.ctatdebug("adding graph skills: " + graphSkills.length);
     if (graphSkills.length > 0) {
@@ -34755,6 +34847,16 @@ CTATExampleTracer = function() {
     that.startSkillTransaction();
     var finish = function() {
       result.setTransactionID(newTransactionID);
+      var origMsgTxt = result.getMsgToRestore();
+      if (origMsgTxt) {
+        if (that.isFeedbackSuppressed()) {
+          problemStateSaver.replaceInProblemState(origMsgTxt, that.getOutputStatus(), result.getStudentSAI(), graph.getFeedbackPolicy() == CTATMsgType.HIDE_BUT_ENFORCE);
+        } else {
+          if (result.getResult() == CTATExampleTracerLink.CORRECT_ACTION || result.getResult() == CTATExampleTracerLink.FIREABLE_BUGGY_ACTION) {
+            problemStateSaver.appendToProblemState(origMsgTxt, that.getOutputStatus(), false);
+          }
+        }
+      }
       var rtn = finishNewExampleTrace(result, sai, actor, doTutorPerformedSteps);
       that.ctatdebug("doNewTrace( " + traceType + ", " + args + " ) returns " + rtn);
       that.restartWorking();
@@ -34788,18 +34890,13 @@ CTATExampleTracer = function() {
       that.ctatdebug("typeof(messageTank) " + typeof messageTank);
       newTransactionID = enqueueToolActionToStudent(result.getTutorSelection(), result.getTutorAction(), result.getTutorInput());
     } else {
-      if (that.isFeedbackSuppressed()) {
-        problemStateSaver.replaceInProblemState(origMsgTxt, that.getOutputStatus(), result.getStudentSAI(), graph.getFeedbackPolicy() == CTATMsgType.HIDE_BUT_ENFORCE);
-      } else {
-        if (result.getResult() == CTATExampleTracerLink.CORRECT_ACTION || result.getResult() == CTATExampleTracerLink.FIREABLE_BUGGY_ACTION) {
-          problemStateSaver.appendToProblemState(origMsgTxt, that.getOutputStatus(), false);
-        }
-      }
+      result.setMsgToRestore(origMsgTxt);
     }
     return newTransactionID;
   }
   function doNewRuleTrace(result, origMsgTxt, cbk) {
     that.ctatdebug("DoNewRuleTrace( " + result + ", " + origMsgTxt + " )");
+    result.setMsgToRestore(origMsgTxt);
     ruleTracer.evaluate(result, cbk);
   }
   function enqueueToolActionToStudent(selection, action, input) {
