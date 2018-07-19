@@ -10,16 +10,43 @@ var cy2;
 var ui;
 var interfaceFilePath;
 var elts = [];
+var g = null;
 function runTask2() {
     //console.log("button pressed");
 
-    var g = CTAT.ToolTutor.tutor.getGraph();
+    g = CTAT.ToolTutor.tutor.getGraph();
     /*var Gjson = buildJSON(g, []);
     console.log("Gjson", Gjson);
     cy.json(JSON.parse(Gjson));
     var layout = cy.layout({name: 'cose'});
     layout.run();*/
     runTask1GivenJSON(g);
+}
+
+/*
+* provides Click-on-state which is needed for testing during authoring
+*/
+
+function TracePathToNode() {
+    //cy.$(":selected").forEach(function(e){console.log(cy.$(e[0]).data)})
+    //var P10 = g.getBestSubpath(g.getNode(1), g.getNode(10)).getSortedLinks()
+    //get all selected nodes
+    var selectedNodes = cy.$(":selected");
+    if (selectedNodes.length < 1)
+        return null;
+    var firstSelect = selectedNodes[0];
+    var destNodeID = Number(firstSelect.data('id'));
+    console.log("firstSelect, destNodeID",firstSelect, destNodeID);
+    let tp = g.getBestSubpath(g.getStartNode(), g.getNode(destNodeID));
+    let PP = tp.getSortedLinks();
+
+    PP.forEach(function(link){
+        console.log('link', link);
+        CTATCommShell.commShell.processComponentAction(link.getDefaultSAI())
+    });
+    console.log(PP)
+
+
 }
 
 
@@ -65,7 +92,10 @@ function getSelectedPath() {
     console.log("called");
     //get all selected nodes
     var selectedNodes = cy.$(":selected");
+    if (selectedNodes.length < 1)
+        return null;
     var firstSelect = selectedNodes[0];
+    console.log(firstSelect);
     var root = cy.$('node[id="0"]');
     //use dijkstra's to get path
     var dijkstra = cy.elements().dijkstra('node[id="0"]',
