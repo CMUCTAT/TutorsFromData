@@ -8,6 +8,7 @@ var edgeFreqs = {};
 var allPaths;
 var cy2;
 var ui;
+var ChosenUI;
 var interfaceFilePath;
 var elts = [];
 var g = null;
@@ -23,32 +24,6 @@ function runTask2() {
     runTask1GivenJSON(g);
 }
 
-/*
-* provides Click-on-state which is needed for testing during authoring
-*/
-
-function TracePathToNode() {
-    //cy.$(":selected").forEach(function(e){console.log(cy.$(e[0]).data)})
-    //var P10 = g.getBestSubpath(g.getNode(1), g.getNode(10)).getSortedLinks()
-    //get all selected nodes
-    var selectedNodes = cy.$(":selected");
-    if (selectedNodes.length < 1)
-        return null;
-    var firstSelect = selectedNodes[0];
-    var destNodeID = Number(firstSelect.data('id'));
-    console.log("firstSelect, destNodeID",firstSelect, destNodeID);
-    let tp = g.getBestSubpath(g.getStartNode(), g.getNode(destNodeID));
-    let PP = tp.getSortedLinks();
-
-    PP.forEach(function(link){
-        console.log('link', link);
-        CTATCommShell.commShell.processComponentAction(link.getDefaultSAI())
-    });
-    console.log(PP)
-
-
-}
-
 
 function getInterface() {
     interfaceFilePath = null;
@@ -58,7 +33,13 @@ function getInterface() {
             interfaceFilePath=NV[1]
     });
     interfaceFilePath = (interfaceFilePath || document.getElementById('fileItem2').files[0]);
-    console.log(interfaceFilePath)
+    console.log('getInterface', interfaceFilePath)
+}
+
+function OpenInterface() {
+    getInterface();
+    console.log('Open Interface', interfaceFilePath)
+    ChosenUI= window.open(interfaceFilePath.name+"?question_file="+ CTATConfiguration.get('question_file'), "_blank");
 }
 
 //<input type="button" value="Add Selected Path to BG" id="bgAddButton" onclick="addPathToBG()" />
@@ -86,6 +67,31 @@ function addPathToBG(correct) {
     //bleh
     //cy2.fit();
 }
+
+
+/*
+* provides Click-on-state which is needed for testing during authoring
+*/
+
+function TracePathToNode() {
+    //get all selected nodes
+    console.log('ChosenUI', ChosenUI);
+    var selectedNodes = cy.$(":selected");
+    if (selectedNodes.length < 1)
+        return null;
+    var firstSelect = selectedNodes[0];
+    var destNodeID = Number(firstSelect.data('id'));
+    console.log("firstSelect, destNodeID",firstSelect, destNodeID);
+    let tp = g.getBestSubpath(g.getStartNode(), g.getNode(destNodeID));
+    let PP = tp.getSortedLinks();
+
+    PP.forEach(function(link){
+        console.log('link', link);
+        ChosenUI.CTATCommShell.commShell.processComponentAction(link.getDefaultSAI());
+    });
+    console.log(PP)
+}
+
 
 
 function getSelectedPath() {
