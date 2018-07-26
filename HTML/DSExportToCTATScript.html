@@ -1,13 +1,15 @@
 <html>
 <head>
 
-    <script src="Assets/papaparse.min.js"></script>
-    <script src="Assets/DSExportToCTATScript.js"></script>
-
-    <script src="Assets/base.js"></script>
     <script src="Assets/jquery.min.js"></script>
+    <script src="Assets/papaparse.min.js"></script>
+
+ 
+    <script src="Assets/base.js"></script>
+
     <script src="Assets/ctat.full.js"></script>
     <script src="Assets/ctatloader.js"></script>
+    <script src="Assets/DSExportToCTATScript.js"></script>
     <script src='Assets/cytoscape.js'></script>
     <script src="Assets/task1.js"></script>
 
@@ -183,8 +185,8 @@
                     </form>
                     <br>
                     <br>
-                    <label id="one" for="fileItem2" class="myButton" onclick="changeColor('one')">Select interface</b> <input id="fileItem2" type="file" style="display:none" /></label>
-                    <label id="two" class="myButton" onclick="OpenInterface()">Open Interface</b> </label>
+                    <label id="one" for="interfaceFilePath" class="myButton" onclick="changeColor('one')">Select interface</b> <input id="interfaceFilePath" type="file" style="display:none" /></label>
+                    <label id="two" class="myButton" onclick="(PT=(new CTATPathTracer())).OpenInterface()">Open Interface</b> </label>
                     <br>
                     <br><br>
                     Ordered?

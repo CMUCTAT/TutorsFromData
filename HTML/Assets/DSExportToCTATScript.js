@@ -8,6 +8,7 @@ var edgeFreqs = {};
 var allPaths;
 var cy2;
 var ui;
+var PT = null;
 var ChosenUI;
 var interfaceFilePath;
 var elts = [];
@@ -69,30 +70,105 @@ function addPathToBG(correct) {
 }
 
 
-/*
-* provides Click-on-state which is needed for testing during authoring
-*/
-
-function TracePathToNode() {
-    //get all selected nodes
-    console.log('ChosenUI', ChosenUI);
-    var selectedNodes = cy.$(":selected");
-    if (selectedNodes.length < 1)
-        return null;
-    var firstSelect = selectedNodes[0];
-    var destNodeID = Number(firstSelect.data('id'));
-    console.log("firstSelect, destNodeID",firstSelect, destNodeID);
-    let tp = g.getBestSubpath(g.getStartNode(), g.getNode(destNodeID));
-    let PP = tp.getSortedLinks();
-
-    PP.forEach(function(link){
-        console.log('link', link);
-        ChosenUI.CTATCommShell.commShell.processComponentAction(link.getDefaultSAI());
+CTATPathTracer = function(graphDivID, givenInterfaceFilePath){
+    var interfaceFilePath = givenInterfaceFilePath||"interfaceFilePath";
+    var cytoDivID = graphDivID||"cy";
+    var cyContainer= document.getElementById(cytoDivID);
+    var ChosenUI = null;
+    var g = CTAT.ToolTutor.tutor.getGraph();
+    var cy = cytoscape({                                   //runTask1GivenJSON(ggraph) {
+        container: cyContainer,
+        hideLabelsOnViewport: true
     });
-    console.log(PP)
+
+    cy.json(JSON.parse(buildJSON(g, {})));
+    var layout = cy.layout({
+                    name: 'cose',
+                    fit: true,
+                    padding: 30,
+                    boundingBox: undefined,
+                    nodeDimensionsIncludeLabels: false,
+                    randomize: true,
+                    componentSpacing: 40,
+                    nodeRepulsion: function( node ){ return 1020480; },
+                    nodeOverlap: 4,
+                    idealEdgeLength: function( edge ){ return 50; },
+                    edgeElasticity: function( edge ){ return 32; },
+                    nestingFactor: 1.2,
+                    gravity: 0.1
+                 });
+
+        layout.pon('layoutstop').then(function( event ){
+            cy.nodes().positions(function(node, i){
+                return CTAT.ToolTutor.tutor.getGraph().getNode(node.data().id).getDimension();
+                });
+            });
+
+    layout.run();
+
+    function getInterface() {
+        interfaceFilePath = null;
+        location.search.split(/[?&]/).forEach(function(q) {
+            let NV=q.split(/=/); 
+            if(NV.length>1 && NV[0]=='interfaceFilePath')
+                interfaceFilePath=NV[1]
+        });
+        interfaceFilePath = (interfaceFilePath || document.getElementById('interfaceFilePath').files[0]);
+        console.log('getInterface', interfaceFilePath)
+    };
+
+    this.OpenInterface = function() {
+        getInterface();
+        console.log('Open Interface', interfaceFilePath)
+        ChosenUI= window.open(interfaceFilePath.name+"?question_file="+ CTATConfiguration.get('question_file'), "_blank");
+    }
+
+    /*
+    * provides Click-on-state which is needed for testing during authoring
+    */
+    this.TracePathToNode = function() {
+        //get all selected nodes
+            console.log('ChosenUI', ChosenUI);
+        var selectedNodes = cy.$(":selected");
+        if (selectedNodes.length < 1)
+            return null;
+        var firstSelect = selectedNodes[0];
+        var destNodeID = Number(firstSelect.data('id'));
+        var destNode = g.getNode(destNodeID);
+        console.log("firstSelect, destNodeID",firstSelect, destNodeID);
+        let tp = g.getBestSubpath(g.getStartNode(), destNode);
+        if (tp == null)
+        {
+            tp = this.findPathToNode(destNode);
+        }
+        if (tp == null)
+        {
+            console.log('node error: destNode cannot be reached');
+        }
+        PA =tp.getSortedLinks();
+        PA.forEach(function(link){
+            console.log('link', link);
+            ChosenUI.CTATCommShell.commShell.processComponentAction(link.getDefaultSAI());
+        });
+        console.log(PA);
+    }
+
+
+    this.findPathToNode = function(n, p) {
+        var inLinks = n.getInLinks();
+        if(inLinks.size <= 0)
+        {
+            p = p||new CTATExampleTracerPath();
+        }
+        else
+        {
+            var e = inLinks.keys().next().value;
+            p = this.findPathToNode(g.getNode(e.getPrevNode()), p);
+            p.addLink(e);
+        }
+        return p;
+    }
 }
-
-
 
 function getSelectedPath() {
     console.log("called");
@@ -117,6 +193,21 @@ function getSelectedPath() {
     });
     return path;
 }
+
+
+
+
+
+//setting up inheritance from CTATBase
+CTATPathTracer.prototype = Object.create(CTATBase.prototype);
+CTATPathTracer.prototype.constructor = CTATPathTracer;
+
+if(typeof module !== 'undefined')
+{
+    module.exports = CTATPathTracer;
+}
+
+
 
 function addPathXToInterface() {
     console.log("addPathXToInterface called");
