@@ -17,8 +17,8 @@ function getInterface() {
         if(NV.length>1 && NV[0]=="interfaceFilePath") 
             interfaceFilePath=NV[1]
     });
-    interfaceFilePath = (interfaceFilePath || document.getElementById('fileItem2').files[0]);
-    console.log(interfaceFilePath)
+    interfaceFilePath = (interfaceFilePath || document.getElementById('fileItem2').files[0].name);
+    console.log("getInterface", interfaceFilePath, "typeof", typeof(interfaceFilePath), "\n question_file", CTATConfiguration.get('question_file'))
 }
 
 //<input type="button" value="Add Selected Path to BG" id="bgAddButton" onclick="addPathToBG()" />
@@ -88,7 +88,7 @@ function addPathXToInterface() {
         });
         if (ui == null || ui.closed) {
             //this is hardcoded-ish for now
-            ui=window.open(interfaceFilePath.name+"?question_file=../FinalBRDs/empty.brd&show_debug_traces=basic", "_blank");
+            ui=window.open(interfaceFilePath+"?question_file="+(CTATConfiguration.get('question_file')||"../FinalBRDs/empty.brd")+"&show_debug_traces=basic", "_blank");
             ui.window.onload = (function() {
                 console.log("onload");
                 for(let m in msgs) ui.window.CTAT.ToolTutor.sendToInterface(msgs[m]);
@@ -100,7 +100,7 @@ function addPathXToInterface() {
         else {
             ui.window.close();
             //we want to reset the UI somehow
-            ui=window.open(interfaceFilePath.name+"?question_file=../FinalBRDs/empty.brd&show_debug_traces=basic", "_blank");
+            ui=window.open(interfaceFilePath+"?question_file="+(CTATConfiguration.get('question_file')||"../FinalBRDs/empty.brd")+"&show_debug_traces=basic", "_blank");
             ui.window.onload = (function() {
                 console.log("onload");
                 for(let m in msgs) ui.window.CTAT.ToolTutor.sendToInterface(msgs[m]);
@@ -174,7 +174,7 @@ function addPathToInterface() {
     });
 
     if (ui == null || ui.closed) {
-        ui=window.open(interfaceFilePath.name+"?question_file=empty.brd&show_debug_traces=basic", "_blank");
+        ui=window.open(interfaceFilePath+"?question_file="+(CTATConfiguration.get('question_file')||"empty.brd")+"&show_debug_traces=basic", "_blank");
         ui.window.onload = (function() {
             for(let m in msgs) ui.window.CTAT.ToolTutor.sendToInterface(msgs[m]);
         }).bind(this);
@@ -188,7 +188,7 @@ function addPathToInterface() {
         }*/
         ui.window.close();
         //we want to reset the UI somehow
-        ui=window.open(interfaceFilePath.name+"?question_file=../FinalBRDs/empty.brd&show_debug_traces=basic", "_blank");
+        ui=window.open(interfaceFilePath+"?question_file="+(CTATConfiguration.get('question_file')||"../FinalBRDs/empty.brd")+"&show_debug_traces=basic", "_blank");
         ui.window.onload = (function() {
             console.log("onload");
             for(let m in msgs) ui.window.CTAT.ToolTutor.sendToInterface(msgs[m]);
