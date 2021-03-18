@@ -1,5 +1,7 @@
+//declare global variables
 var students = new Set();
-var problemsAndPaths = {};
+var problemsAndPaths = {}; //problemsAndPaths[problem name][studentID] = [{stepID: <id>, selection: s, action: a, input: i}, ... ]
+var __rowVarsRaw = [];
 var problems = [];
 var cy;
 var edgesToHide, nodesToHide;
@@ -10,16 +12,129 @@ var cy2;
 var ui;
 var interfaceFilePath;
 
+//user-determined parameters
+var detector_list = ["Detectors/system_misuse.js", "Detectors/critical_struggle.js", "Detectors/struggle__moving_average.js", "Detectors/student_doing_well__moving_average.js", "Detectors/idle.js"];
+var KC_model = "KC (Default)";
+
+var BKTparams = {p_transit: 0.2, 
+                p_slip: 0.1, 
+                p_guess: 0.2, 
+                p_know: 0.25};
+var BKThistory = {};
+var pastSteps = {};
+var pastStudentProblems = new Set();
+var pastStudents = new Set();
+var i=0;
+currDetectorValues = {};
+outputStr="";
+var problemScripts=[];
+var __fieldIdxs = {};
+var __logKeyMap = {
+	studentId: "Anon Student Id",
+    sessionId: "Session Id",
+    transactionId: "Transaction Id",
+    toolTime: "CF (tool_event_time)",
+    tutorTime: "CF (tutor_event_time)",
+    problemName: "Problem Name",
+    stepName: "Step Name",
+    stepId: "CF (step_id)",
+    selection: "Selection",
+    action: "Action",
+    input: "Input",
+    outcome: "Outcome",
+    helpLevel: "Help Level",
+    totalNumHints: "Total Num Hints",
+    actor: "Student Response Subtype",
+    dateTime: "Time"
+};
+var __replayAtStepN = 0;
+
+var __util = (function() {
+	var s = location.search.substring(1); 
+	var queryParams = JSON.parse('{"' + s.replace(/&/g, '","').replace(/=/g,'":"') + '"}', function(k, v) { return k===""?v:decodeURIComponent(v) });
+	var tsRegex = /\.(\d{1,3})\sUTC$/; 
+	return {
+		getQueryParam: function(k) {
+			return queryParams[k];
+		},
+
+		formatToolTime: function(ts) {
+			let formatted = ts.replace(tsRegex, (m, g1)=> {
+				let padN = 3-g1.length;
+				for (let i = 0; i < padN; i++) {
+					g1 = '0'+g1;
+				}
+				return "."+g1+" UTC";
+			});
+			return formatted;
+		}
+	};
+})();
+
 function getInterface() {
-    interfaceFilePath = null;
-    location.search.split(/[?&]/).forEach(function(q) {
-        let NV=q.split(/=/); 
-        if(NV.length>1 && NV[0]=="interfaceFilePath") 
-            interfaceFilePath=NV[1]
-    });
-    interfaceFilePath = (interfaceFilePath || document.getElementById('fileItem2').files[0].name);
+    interfaceFilePath = (__util.getQueryParam("interfaceFilePath") || document.getElementById('fileItem2').files[0].name);
     console.log("getInterface", interfaceFilePath, "typeof", typeof(interfaceFilePath), "\n question_file", CTATConfiguration.get('question_file'))
+	return interfaceFilePath;
 }
+
+const StepReplayer = (function(){
+	var atStep = 0;
+	var steps = [];
+	var uiWindow = null;
+	return {
+		
+		setSteps: function(stepList) {
+			atStep = 0;
+			steps = stepList;
+		},
+
+		setUiWindow: function(win) {
+			uiWindow = win;
+		},
+
+		sendNextStep: function() {
+			let sai = steps[atStep];
+			if (sai.input === "hint request") {
+				if (sai.selection === "hint") {
+					uiWindow.CTATCommShell.commShell.requestHint();
+					console.log("\trequest hint");
+				} else {
+					console.log("\tprevious/next button press, skip...");
+				}
+			} else {
+				let ctatSAI = new CTATSAI(sai.selection, sai.action, sai.input),
+					stepType = "ATTEMPT";
+				console.log("\tsend sai: "+sai.selection+","+sai.action+","+sai.input+", ("+(sai.tutored ? "" : "un")+"tutored)");
+				uiWindow.CTATCommShell.commShell.processComponentAction(
+																ctatSAI, //sai
+																sai.tutored, //tutored
+																true, //behavior recorded
+																null,  //[deprecated]
+																stepType, //log type
+																null, //aTrigger
+																sai.transactionID //transaction id
+																);
+			}
+			atStep++;
+		},
+	
+		sendUpToStep: function(stepN) {
+			while(atStep < stepN) {
+				this.sendNextStep();
+			}
+		},
+
+		sendUpThroughStep: function(stepN) {
+			while(atStep <= stepN) {
+				this.sendNextStep();
+			}
+		},
+
+		sendAllSteps: function() {
+			this.sendUpToStep(steps.length);
+		},
+	};
+})();
 
 //<input type="button" value="Add Selected Path to BG" id="bgAddButton" onclick="addPathToBG()" />
 function addPathToBG(correct) {
@@ -38,13 +153,6 @@ function addPathToBG(correct) {
             }
         }
     });
-
-    //cy2.add(path);
-    //need to do correctness info
-    //if it's an edge style thing, then need a new data property for each edge/node right
-    //idk how to do this, UI-wise
-    //bleh
-    //cy2.fit();
 }
 
 function getSelectedPath() {
@@ -86,33 +194,12 @@ function addPathXToInterface() {
                                                                                         edge.data("action"),
                                                                                         edge.data("input"))));
         });
-        if (ui == null || ui.closed) {
-            //this is hardcoded-ish for now
-            ui=window.open(interfaceFilePath+"?question_file="+(CTATConfiguration.get('question_file')||"../FinalBRDs/empty.brd")+"&show_debug_traces=basic", "_blank");
-            ui.window.onload = (function() {
-                console.log("onload");
-                for(let m in msgs) ui.window.CTAT.ToolTutor.sendToInterface(msgs[m]);
-            }).bind(this);
-            ui.window.onclose = (function() {
-                ui = null;
-            }).bind(this);
-        }
-        else {
-            ui.window.close();
-            //we want to reset the UI somehow
-            ui=window.open(interfaceFilePath+"?question_file="+(CTATConfiguration.get('question_file')||"../FinalBRDs/empty.brd")+"&show_debug_traces=basic", "_blank");
-            ui.window.onload = (function() {
-                console.log("onload");
-                for(let m in msgs) ui.window.CTAT.ToolTutor.sendToInterface(msgs[m]);
-            }).bind(this);
-            ui.window.onclose = (function() {
-                ui = null;
-            }).bind(this);
-            /*for(let m in msgs) {
-                ui.window.CTAT.ToolTutor.sendToInterface(msgs[m]);
-            }*/
-        }
-    }
+
+		if (ui != null || !ui.closed) {
+				ui.window.close();
+		}
+		openTutorInNewWindow(sendStepsToTutor.bind(this));
+	}
 }
 
 function nextPath() {
@@ -135,6 +222,70 @@ function prevPath() {
     addPathXToInterface();
 }
 
+function openTutorInNewWindow(onloadFunc) {
+	let iPath = document.getElementById("interfacePathInput").value || __util.getQueryParam("interfaceFilePath") || null,
+		qFile = document.getElementById("questionFileInput").value || __util.getQueryParam("question_file") || null,
+		doLogging = document.getElementById("doLoggingInput").checked,
+		datasetName = document.getElementById("logDatasetInput").value || null,
+		logServiceURL = "https://pslc-qa.andrew.cmu.edu/log/server";
+
+	if (iPath) {
+		if (qFile) {
+			let queryStr = "?replay_mode=true&question_file="+qFile;
+			if (doLogging && !datasetName) {
+				alert("specify the dataset name to be used for logging");
+			} else {
+				doLogging && (queryStr+="&Logging=ClientToLogServer&dataset_name="+datasetName+"&log_service_url="+logServiceURL);
+				ui=window.open(iPath+queryStr);
+    			if (onloadFunc) {
+					ui.window.onload = onloadFunc;
+    			}
+				ui.window.onclose = (function() {
+    			    ui = null;
+    			}).bind(this);
+				StepReplayer.setUiWindow(ui.window);
+			}
+		} else {
+			alert("specify the question file");
+		}
+	} else {
+		alert("specify the interface file");
+	}
+}
+
+//send a series of messages of the form created by CTATTutorMessageBuilder
+function sendStepsToTutor(msgs) {
+	msgs.forEach((m) => ui.window.CTAT.ToolTutor.sendToInterface(m));
+}
+
+//send a series of sais
+function sendSAIsToTutor(sais) {
+	console.log("sendSAIsToTutor");
+	sais.forEach((sai)=>{
+		if (sai.input === "hint request") {
+			if (sai.selection === "hint") {
+				ui.window.CTATCommShell.commShell.requestHint();
+				console.log("\trequest hint");
+			} else {
+				console.log("\tprevious/next button press, skip...");
+			}
+		} else {
+			let ctatSAI = new CTATSAI(sai.selection, sai.action, sai.input),
+				stepType = "ATTEMPT";
+			console.log("\tsend sai: "+sai.selection+","+sai.action+","+sai.input+", ("+(sai.tutored ? "" : "un")+"tutored)");
+			ui.window.CTATCommShell.commShell.processComponentAction(
+																ctatSAI, //sai
+																sai.tutored, //tutored
+																true, //behavior recorded
+																null,  //[deprecated]
+																stepType, //log type
+																null, //aTrigger
+																sai.transactionID //transaction id
+																);
+		}
+	});
+}
+
 function addPathToInterface() {
     console.log("addPathToInterface called");
 
@@ -143,18 +294,7 @@ function addPathToInterface() {
     //get all selected nodes/edges
     //path = getSelectedPath();
     path = cy.$(":selected");
-    /*var selectedNodes = cy.$(":selected");
-    var firstSelect = selectedNodes[0];
-    var root = cy.$('node[id="0"]');
-    //use dijkstra's to get path
-    var dijkstra = cy.elements().dijkstra('node[id="0"]',
-        function() {
-              return 1;
-            }, false);
-    var path = dijkstra.pathTo(firstSelect);
-    */
-    //path.select();
-
+    
     //first log the SAIs in path
     path.edges().forEach(function(edge) {
         console.log(edge.data("info"))
@@ -173,43 +313,10 @@ function addPathToInterface() {
         console.log(msg)
     });
 
-    if (ui == null || ui.closed) {
-        ui=window.open(interfaceFilePath+"?question_file="+(CTATConfiguration.get('question_file')||"empty.brd")+"&show_debug_traces=basic", "_blank");
-        ui.window.onload = (function() {
-            for(let m in msgs) ui.window.CTAT.ToolTutor.sendToInterface(msgs[m]);
-        }).bind(this);
-        ui.window.onclose = (function() {
-            ui = null;
-        }).bind(this);
-    }
-    else {
-        /*for(let m in msgs) {
-            ui.window.CTAT.ToolTutor.sendToInterface(msgs[m]);
-        }*/
+    if (ui && !ui.closed) {
         ui.window.close();
-        //we want to reset the UI somehow
-        ui=window.open(interfaceFilePath+"?question_file="+(CTATConfiguration.get('question_file')||"../FinalBRDs/empty.brd")+"&show_debug_traces=basic", "_blank");
-        ui.window.onload = (function() {
-            console.log("onload");
-            for(let m in msgs) ui.window.CTAT.ToolTutor.sendToInterface(msgs[m]);
-        }).bind(this);
-        ui.window.onclose = (function() {
-            ui = null;
-        }).bind(this);
     }
-
-
-    /*
-    ui=window.open("fractionAddition.html?question_file=empty.brd&show_debug_traces=basic", "_blank");
-    ui.window.onload = (function() {
-        console.log("hi");
-        for(let m in msgs) ui.window.CTAT.ToolTutor.sendToInterface(msgs[m]);
-    }).bind(this);*/
-
-    //why is it that when I copypaste this into console, it works
-    //but when i run it through the button, it doesn't work?
-    //oh I changed it from this.msgs to msgs...
-    //idk if the bind() is necessary?
+	openTutorInNewWindow(sendStepsToTutor.bind(this, msgs));
 }
 
 function displayNMostFrequentPaths() {
@@ -229,19 +336,7 @@ function displayNMostFrequentPaths() {
         edgesToHide.show();
     //disclaimer: these hide() and show() functions aren't documented
     
-    /*pathFreqs = [];//entries are [original index, path freq]
-    for (var i = 0; i < allPaths.length; i++) {
-        //freq of path i = min freq of its edges
-        total = 0;
-        allPaths[i].edges().forEach(function(e){total += e.data("freq")});
-        //pathFreqs[i] = [i,allPaths[i].edges().min(function(e){return e.data("freq")})];
-        //or instead do average freq because that's probably more useful it seems
-        pathFreqs[i] = [i,total/allPaths[i].edges().length];
-    }
-
-    pathFreqs.sort(function(a,b) {return b[1]-a[1]});*/
-
-    //allPaths is sorted based on pathFreqs already in runTask1GivenJSON()
+    //allPaths is sorted based on pathFreqs already in buildVisualization()
 
     //maybe it's easier to hide everything and then only show the N most frequent ones
     nodesToHide = cy.nodes();
@@ -329,64 +424,11 @@ function updateEdgeFreqs() {
     nodesToHide.remove();
 }
 
-function runTask1GivenJSON() {
+function buildVisualization() {
     cy = cytoscape({
         container: document.getElementById('cy'),
         hideLabelsOnViewport: true
     });
-    /*cy2 = cytoscape({
-        container: document.getElementById('cy2'),
-        hideLabelsOnViewport: true
-    });
-
-    cy2.json({
-        style: [
-            {
-                selector: 'node', 
-                style: {'background-color': 'green',
-                        'label': 'data(id)',
-                        "text-valign": "center",
-                        "text-halign": "center"
-                }
-            },
-
-            {
-                selector: 'node[id="0"]', 
-                style: {'background-color': 'purple',
-                        'label': 'data(id)',
-                        "text-valign": "center",
-                        "text-halign": "center"
-                }
-            },
-            
-            {
-                selector: 'edge[?correct]',
-                style: {'line-color': 'blue',
-                        'target-arrow-color': 'blue',
-                        'label': 'data(info)',
-                        //'width': 'mapData(freq, 0, '+maxFreq+', 1, 20)',
-                        'target-arrow-shape': 'triangle',
-                        'curve-style': 'bezier',
-                        'min-zoomed-font-size': '10'
-                }
-            },
-
-            {
-                selector: 'edge[!correct]',
-                style: {'line-color': 'red',
-                        'target-arrow-color': 'red',
-                        'label': 'data(info)',
-                        //'width': 'mapData(freq, 0, '+maxFreq+', 1, 20)',
-                        'target-arrow-shape': 'triangle',
-                        'curve-style': 'bezier',
-                        'min-zoomed-font-size': '10'
-                }
-            }
-        ]
-    });*/
-
-    buildGraphForProblem();
-    //console.log("button pressed 2");
     cy.json(JSON.parse(buildJSON(graph, edgeFreqs)));
     var layout = cy.layout({
                     name: 'cose',
@@ -420,7 +462,6 @@ function runTask1GivenJSON() {
         //freq of path i = min freq of its edges
         total = 0;
         allPaths[i].edges().forEach(function(e){total += e.data("freq")});
-        //pathFreqs[i] = [i,allPaths[i].edges().min(function(e){return e.data("freq")})];
         //or instead do average freq because that's probably more useful it seems
         pathFreqs[i] = [i,total/allPaths[i].edges().length];
     }
@@ -473,13 +514,13 @@ function runTask1GivenJSON() {
 
     //totalSAs = 0;
     allSAs = {};
-    bigArray = Object.entries(problemsAndPaths)
+    bigArray = Object.entries(problemsAndPaths) //[[problemID, {studentID: [<steps>]}], ... ]
     for (var problemInd = 0; problemInd < bigArray.length; problemInd++) {
-        problemArray = Object.entries(bigArray[problemInd][1]);
+        problemArray = Object.entries(bigArray[problemInd][1]); //[[studentID, [<steps>]], ...]
         for (var studentInd = 0; studentInd < problemArray.length; studentInd++) {
-            saiList = Object.entries(problemArray[studentInd][1])
+            saiList = problemArray[studentInd][1] //[{<step>}, ...]
             for (var SAind = 0; SAind < saiList.length; SAind++) {
-                if (!allSAs.hasOwnProperty(saiList[SAind][0])) {
+                if (!allSAs.hasOwnProperty(saiList[SAind].selection)) {
                     allSAs[saiList[SAind][0]] = 1;
                 }
             }
@@ -497,34 +538,28 @@ function runTask1GivenJSON() {
 function buildGraphForProblem() {
     //get params from the form (it should have defaults too)
     //for problem #:
-    var chosenProblem = 0;
+    var chosenProblemIdx = 0;
     var problemRadios = document.getElementsByName("problem");
     for (var k = 0; k < problems.length; k++) {
         if (problemRadios[k].checked) {
-            chosenProblem = k;
+            chosenProblemIdx = k;
             break;
         }
-    }//wait this is pointless if it's always 0 whatever keep for now
-    console.log("chosen problem: " + problems[chosenProblem]);
+    }
+	var chosenProblemName = problems[chosenProblemIdx];
+	console.log("chosen problem: " + chosenProblemName);
 
     //ordered/unordered
     var ordered = $('input[name=ordered]:checked').val();
     console.log("ordered? " + ordered);
-    //edge freq -- default threshold is 0 -- ignore this for now
-    //var edgeFreq = document.getElementById("edgeFreq");
-    //console.log("edge frequency threshold: " + edgeFreq.value);
 
-    var problem = problemsAndPaths[problems[chosenProblem]];
-    //start by sorting paths by length and SAIs
-    //ohh so length is overall, and within a path, you want the SAIs to be sorted in some canonical ordering
-    var entries = Object.entries(problem);
-    for (i = 0; i < entries.length; i++) {        
-        entries[i][1] = Object.entries(entries[i][1])
-    }
+    var problem = problemsAndPaths[chosenProblemName];
+    
+	//start by sorting paths by length and SAIs
+    var entries = Object.entries(problem); //entries = [[studentID1, [{step1}, ... {stepN}]], ... [studentIDN, [{step1, ... {<stepN>}]]]
 
-    //sort by path length -- unchanged and working...
+    //sorting entries by path length, longest to shortest
     entries.sort(function(a,b){
-        //each entry of problem is [studentId, object that contains sais -- the path]
         return -(a[1].length - b[1].length);//want descending order
     });
 
@@ -540,40 +575,32 @@ function buildGraphForProblem() {
     if (ordered==="unordered") {
         console.log("doing unordered");
         var SAIpositions = {};
-        for (i = 0; i < entries.length; i++) {
-            var sais = entries[i][1];
-            for (j = 0; j < sais.length; j++) {
-                var saiKey = sais[j][0]; //selection-action
-                if (!SAIpositions.hasOwnProperty(saiKey)) {
-                    SAIpositions[saiKey] = [];
-                }
-                SAIpositions[saiKey].push(j);
-            }
-        }
-        //so now SAIpositions is populated; compute averages
         var averageSAIpositions = {};
-        var keys = Object.keys(SAIpositions);
-        keys.forEach(function(SAkey, index) {
-            averageSAIpositions[SAkey] = 0;
-            SAIpositions[SAkey].forEach(function(saiPos, ind) {
-                averageSAIpositions[SAkey] += saiPos;
-            });
-            averageSAIpositions[SAkey] /= SAIpositions[SAkey].length;
-        });
+        
+		entries.forEach((studIDAndSteps)=> {
+			studIDAndSteps[1].forEach((step, stepIdx)=> {
+				if (!SAIpositions[step.stepID]) {
+					SAIpositions[step.stepID] = [];
+				}
+				SAIpositions[step.stepID].push(stepIdx);
+			});
+		});
 
-        //now go through each path and sort it
-        //now sort by average position
-        for (i = 0; i < entries.length; i++) {
-            var sais = entries[i][1];
-            sais.sort(function(a,b){
-                //a is [selection-action as key, [selection,action,input] as value]
-                //sort by selection-action key
-                //return (a[0].toString()).localeCompare(b[0].toString());
-                return averageSAIpositions[a[0]] - averageSAIpositions[b[0]];
+        //so now SAIpositions is populated; compute averages
+		for (let stepID in SAIpositions) {
+			averageSAIpositions[stepID] = 0;
+			SAIpositions[stepID].forEach((saiIdx) => {
+                averageSAIpositions[stepID] += saiIdx;
             });
-        }
-    }
-    else {
+            averageSAIpositions[stepID] /= SAIpositions[stepID].length;
+		}
+
+        //now sort steps by average position
+        entries.forEach((studIDAndSteps)=> {
+			studIDAndSteps[1].sort((stepA, stepB) => averageSAIpositions[stepA.stepID] - averageSAIpositions[stepB.stepID]);
+		});
+
+    } else {
         console.log("doing ordered");
     }
 
@@ -594,9 +621,9 @@ function buildGraphForProblem() {
         var sais = entries[i][1];
         //console.log(sais.length);
         for (var ind = 0; ind < sais.length; ind++) {
-            var selection = sais[ind][1][0];
-            var action = sais[ind][1][1];
-            var input = sais[ind][1][2];
+            var selection = sais[ind].selection;
+            var action = sais[ind].action;
+            var input = sais[ind].input;
             //console.log(selection+" "+action+" "+input);
 
             var prevOutLinks = previousNode.getOutLinks();
@@ -646,41 +673,7 @@ function buildGraphForProblem() {
         }
     }
 
-    //populate allPaths
-    //need to enumerate all paths in the graph from root to leaves
-    //for all leaves, do dijkstra's to get path to root
-
-    //return [graph,edgeFreqs];
 }
-
-//
-//*assume transactions are grouped by student*
-//
-
-
-//user-determined parameters
-var detector_list = ["Detectors/system_misuse.js", "Detectors/critical_struggle.js", "Detectors/struggle__moving_average.js", "Detectors/student_doing_well__moving_average.js", "Detectors/idle.js"];
-var KC_model = "KC (Default)";
-
-
-//declare global variables
-//
-
-var currSkills_indices;
-var studentId_index; var sessionId_index; var transactionId_index; var toolTime_index; var tutorTime_index; var problemName_index;var stepName_index; var stepId; var stepId_index; var selection_index;var action_index;var input_index;var outcome_index;var helpLevel_index;var totalNumHints_index; var dateTime_index;
-var studentId; var sessionId; var dateTime; var transactionId;var actor;var toolTime;var tutorTime;var problemName; var stepName;var selection;var action;var input;var outcome;var tutorSelection; var tutorAction;var helpLevel;var totalNumHints;
-var currSkills;
-var BKTparams = {p_transit: 0.2, 
-                p_slip: 0.1, 
-                p_guess: 0.2, 
-                p_know: 0.25};
-var BKThistory = {};
-var pastSteps = {};var pastStudentProblems = new Set();var pastStudents = new Set();
-var i=0;
-currDetectorValues = {};
-outputStr="";
-var problemScripts=[];
-
 
 
 function clone(obj) {
@@ -698,11 +691,7 @@ function clone(obj) {
 
     // Handle Array
     if (obj instanceof Array) {
-        copy = [];
-        for (var i = 0, len = obj.length; i < len; i++) {
-            copy[i] = clone(obj[i]);
-        }
-        return copy;
+        return obj.slice();
     }
 
     // Handle Object
@@ -787,57 +776,42 @@ function constructTransaction(e){
 
 function getRowVariables(thisrow){
     if(!thisrow || !thisrow.length || !thisrow[0]) return false;
-    //initialize all relevant indices
-    if(i==0){
-        currSkills_indices = getAllIndices(thisrow, KC_model);
-        studentId_index = thisrow.indexOf("Anon Student Id");
-        sessionId_index = thisrow.indexOf("Session Id");
-        transactionId_index = thisrow.indexOf("Transaction Id");
-        toolTime_index = thisrow.indexOf("CF (tool_event_time)");
-        tutorTime_index = thisrow.indexOf("CF (tutor_event_time)");
-        problemName_index = thisrow.indexOf("Problem Name");
-        stepName_index = thisrow.indexOf("Step Name");
-        stepId_index =  thisrow.indexOf("CF (step_id)");
-        selection_index = thisrow.indexOf("Selection");
-        action_index = thisrow.indexOf("Action");
-        input_index = thisrow.indexOf("Input");
-        outcome_index = thisrow.indexOf("Outcome");
-        helpLevel_index = thisrow.indexOf("Help Level");
-        totalNumHints_index = thisrow.indexOf("Total Num Hints");
-        actor_index = thisrow.indexOf("Student Response Subtype");
-        dateTime_index = thisrow.indexOf("Time");
+    var rowVars = {};
+	//initialize all relevant indices
+    
+	if(i==0){
+       	thisrow.forEach((key, idx)=> {
+			
+			if (__fieldIdxs[key]) {
+				if (!(__fieldIdxs[key] instanceof Array)) {
+					__fieldIdxs[key] = [__fieldIdxs[key]];
+				}
+				__fieldIdxs[key].push(idx);
+			} else {
+				__fieldIdxs[key] = idx;
+			}
+		});
     }
     else{
-        studentId = thisrow[studentId_index];
-        sessionId = thisrow[sessionId_index];
-        transactionId  = thisrow[transactionId_index];
-        toolTime  = thisrow[toolTime_index];
-        tutorTime  = thisrow[tutorTime_index];
-        problemName  = thisrow[problemName_index];
-        stepName  = thisrow[stepName_index];
-        stepId = thisrow[stepId_index];
-        tutorSelection = stepName.split(" ")[0];
-        tutorAction = stepName.split(" ")[1];
-        selection  = thisrow[selection_index];
-        action  = thisrow[action_index];
-        input = thisrow[input_index];
-        outcome = thisrow[outcome_index];
-        helpLevel = thisrow[helpLevel_index];
-        totalNumHints = thisrow[totalNumHints_index];
-        actor = (thisrow[actor_index]!="tutor-performed") ? "student" : "tutor";
-        dateTime = thisrow[dateTime_index];
-
-        currSkills = [];
+		for (let key in __fieldIdxs) {
+			let idx = __fieldIdxs[key];
+			if (idx instanceof Array) {
+				idx.forEach((i, ii)=>rowVars[key+ii] = thisrow[i]);
+			} else {	
+				rowVars[key] = thisrow[idx];
+			}
+		}
+        rowVars.currSkills = [];
         //populate skill names
-        for (j in currSkills_indices){
-            var thisSkill = thisrow[currSkills_indices[j]];
+        for (j in __fieldIdxs[KC_model]){
+            var thisSkill = thisrow[__fieldIdxs[KC_model][j]];
             if (thisSkill!=""){
                 currSkills.push(thisSkill);
             }
         }
 
     }
-    return true;
+    return rowVars;
 }
 
 function update_BKT(t){
@@ -907,30 +881,48 @@ function txToStudentAction(t){
     return saiMsg;
 }
 
-
 //test detectors on historical data (this function acts on one row)
 function simulateDataStream(e, parser){
-    var thisrow = e.data[0];
-    console.log("simulateDataStream(i=="+i+")", e, thisrow);
-    if(!getRowVariables(thisrow)) return;
-
+    var thisrow = e.data[0],
+		rowVars;
+	//console.log("simulateDataStream(i=="+i+")", e, thisrow);
+    if(!(rowVars = getRowVariables(thisrow))) return;
+	__rowVarsRaw.push(rowVars);
     if (i!=0){
-        //task 2 stuff
-        if (!(problemsAndPaths.hasOwnProperty(problemName))) { //need to add the problem
+        let problemName = rowVars["Problem Name"],
+			studentId = rowVars["Anon Student Id"],
+			selection = rowVars["Selection1"] ? "hint" : rowVars["Selection0"],
+			action = rowVars["Action1"] ? "ButtonPressed" : rowVars["Action0"],
+			input = rowVars["Input"],
+			actor = (rowVars["Student Response Subtype"] === "tutor-performed") ? "tutor" : "student",
+			feedback = rowVars["Feedback Text"] || "";
+			timestamp = __util.formatToolTime(rowVars["CF (tool_event_time)"]); 
+		
+		//task 2 stuff
+        if (!problemsAndPaths.hasOwnProperty(problemName)) { //need to add the problem
             problemsAndPaths[problemName] = {};
             problems.push(problemName);
         }
-        if (!(problemsAndPaths[problemName].hasOwnProperty(studentId))) { //this student needs to be added to the problem
-            problemsAndPaths[problemName][studentId] = {};
+        if (!problemsAndPaths[problemName].hasOwnProperty(studentId)) { //this student needs to be added to the problem
+            problemsAndPaths[problemName][studentId] = [];
         }
-        //need to ignore hints for now
-        //need to ignore tutor-performed actions
+
+		//take sessionID into account ?
+
         //NtpDate is because it causes issues with the Large Dog Kennel; you get better results this way...
-        if (input.indexOf("hint") == -1 && (actor === "student") && (selection != "NtpDate")) {
-            //console.log(action);
-            //problemsAndPaths[problemName][studentId][selection] = [action,input];//add this row's SAI to the student's data
-            delete problemsAndPaths[problemName][studentId][selection+"-"+action];
-            problemsAndPaths[problemName][studentId][selection+"-"+action]=[selection,action,input];//I guess we want to do it this way now?   
+        if ((selection !== "NtpDate") && (actor === "student")) {
+            let step = {
+				stepID: rowVars["CF (step_id)"] || selection+"-"+action,
+				transactionID: rowVars["Transaction Id"],
+				selection: selection,
+				action: action,
+				input: input,
+				tutored: rowVars["CF (tutor_event_time)"] !== '',
+				timestamp: timestamp,
+				outcome: rowVars["Outcome"],
+				feedback: feedback
+			};
+			problemsAndPaths[problemName][studentId].push(step);
         }
 
         if (!(students.has(studentId))) {
@@ -940,52 +932,124 @@ function simulateDataStream(e, parser){
     i++;
 }
 
-//called when papa finishes parsing
-function buildOptions() {
-    //select which problem
-    var problemChoices = document.getElementById("problemChoicesForm");
-    for (var k = 0; k < problems.length; k++) {
-        var radio = document.createElement("input");
+function buildRadioChoices(container, groupName, values, onChange) {
+	container.innerHTML = '';
+	values.forEach((value, idx)=>{
+		var radio = document.createElement("input");
         var label = document.createElement("label");
         radio.type = "radio";
-        radio.name = "problem";
-        radio.value = problems[k];
-        if (k==0)
+        radio.name = groupName;
+        radio.value = value;
+        if (idx==0) {
             radio.checked = "checked";
-        problemChoices.appendChild(radio);
-        problemChoices.appendChild(label);
-        label.appendChild(document.createTextNode(problems[k]));
-    }
+        }
+        container.appendChild(label);
+		label.appendChild(radio);
+        label.appendChild(document.createTextNode(value));
+		container.appendChild(document.createElement("br"));
+		onChange && radio.addEventListener('change', onChange.bind(radio, radio));
+	});
 
-    runTask1GivenJSON();
 }
 
 
-//open all detectors in detector_list as WebWorkers
-//
-//   set up event listeners
-//
-//var path = window.location.pathname;
-//path = path.split("/").slice(0,-1).join("/");
+function buildStepDisplay() {
+	let stepContainer = document.getElementById("stepDisplay");
+	if (stepContainer) {
 
+		let problem = Array.prototype.find.call(document.getElementById("problemChoicesForm").querySelectorAll("input[type=radio]"), (r)=>r.checked).value,
+			student = Array.prototype.find.call(document.getElementById("studentChoicesForm").querySelectorAll("input[type=radio]"), (r)=>r.checked).value,
+			steps = problemsAndPaths[problem][student].slice(),
+			nSteps = steps.length,
+			tBody = stepContainer.querySelector("tbody"),
+			stepTableLabel = document.getElementById("stepDisplayLabel");
+	
+		tBody.innerHTML = '';
+		steps.forEach((s, i1)=> {
+			let tr = document.createElement("tr");
+			tBody.appendChild(tr);
+			[i1, s.tutored, s.outcome, s.selection, s.action, s.input, s.feedback].forEach((c, i2)=>{
+				if (i2 === 1) {
+					c = c ? "tutored" : "untutored";
+				} else if (i2 === 2) {
+					c = c || "N/A";
+				}
+				let td = document.createElement("td");
+				td.innerHTML = c;
+				tr.appendChild(td);
+			});
+		});
+
+		stepTableLabel.innerHTML = "Steps ("+nSteps+")";
+		StepReplayer.setSteps(steps);
+	} else {
+		console.log("no stepDisplay element, skipping buildStepDisplay");
+	}
+}
+
+function buildStudentChoices(probName) {
+	console.log("buildStudentChoices: "+probName);
+	var studentChoices = document.getElementById("studentChoicesForm"),
+		students = Object.keys(problemsAndPaths[probName]);
+	if (studentChoices) {
+		buildRadioChoices(studentChoices, "student", students, buildStepDisplay);
+		buildStepDisplay();
+	} else {
+		console.log("no studentChoicesForm element, skipping buildStudentChoices");
+	}
+}
+
+function buildOptions() {
+    //select which problem
+    var problemChoices = document.getElementById("problemChoicesForm");
+	buildRadioChoices(problemChoices, "problem", problems, (radio)=>{buildStudentChoices(radio.value)});
+	buildStudentChoices(problems[0]);
+}
+
+function sortSolutionPaths() {
+	for (let problemId in problemsAndPaths) {
+		let problem = problemsAndPaths[problemId];
+		for (let studentId in problem) {
+			problem[studentId].sort((sai1, sai2) => {
+				return sai1.timestamp.localeCompare(sai2.timestamp);
+			});
+		}
+	}
+}
+
+//called when papa finishes parsing
+function doneParse() {
+   	sortSolutionPaths(); 
+	buildOptions();
+	buildGraphForProblem();
+    buildVisualization();
+}
+
+function runReplay() {
+	let probForm = document.getElementById("problemChoicesForm"),
+		studForm = document.getElementById("studentChoicesForm"),
+		probRadios = probForm.querySelectorAll("input[type=radio]"),
+		studRadios = studForm.querySelectorAll("input[type=radio]"),
+		probR = Array.prototype.find.call(probRadios, (r)=>r.checked),
+		studentR = Array.prototype.find.call(studRadios, (r)=>r.checked),
+		prob = probR && probR.value,
+		stud = studentR && studentR.value;
+	
+	console.log("runReplay, problem is ",prob,"student is ",stud);
+	let sais = problemsAndPaths[prob][stud];
+	console.log("got steps:",sais);
+
+	if (ui && !ui.closed) {
+		
+		//sendSAIsToTutor( sais );
+		StepReplayer.sendAllSteps();
+	
+	} else {
+		alert("first open the tutor using the 'launch interface' button");
+	}
+}
 
 function downloadCSV(args) {  
-        // var data, filename, link;
-        // var csv = outputStr;
-        // if (csv == null) return;
-
-        // filename = args.filename || 'export.csv';
-
-        // if (!csv.match(/^data:text\/csv/i)) {
-        //     csv = 'data:text/csv;charset=utf-8,' + csv;
-        // }
-        // data = encodeURI(csv);
-
-        // link = document.createElement('a');
-        // link.setAttribute('href', data);
-        // link.setAttribute('download', filename);
-        // link.click();
-
         var csvData = new Blob([outputStr], {type: 'text/csv;charset=utf-8;'});
 
         exportFilename = args.filename || 'export.csv';

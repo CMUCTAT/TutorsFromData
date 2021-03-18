@@ -1,0 +1,62 @@
+#mainDiv {
+	width: 1000px;
+}
+
+.row {
+	display: flex;
+	flex-direction: row;
+}
+
+.row > * {
+	flex: 1;
+	margin: 0px 2px;
+}
+
+.column {
+	display: flex;
+	flex-direction: column;
+}
+
+.column > * {
+	margin: 2px 0px;
+}
+
+.noStretch {
+	flex: 0 1 auto;
+}
+
+#stepDisplayLabel {
+	text-align: center;
+	font-size: 20px;
+	font-weight: bold;
+	color: #ffffff;
+	background-color: #97cbfa;
+	border-radius: unset;
+}
+
+#stepDisplay {
+	min-height: 50px;
+	max-height: 400px;
+	overflow-y: auto;
+	border-radius: unset;
+	border: 1px solid #95c9f8;
+}
+
+#stepDisplay > table {
+	border-collapse: collapse;
+}
+
+#stepDisplay > table td {
+	font-size: 11px;
+	border-bottom: 1px solid #97cbfa;
+	word-wrap: break-word;
+	white-space: normal;
+}
+
+#stepDisplay > table th {
+	position: sticky;
+	top: 0px;
+	background-color: #bfe1ff;
+}
+
+
