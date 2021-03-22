@@ -47,7 +47,6 @@ var __logKeyMap = {
     actor: "Student Response Subtype",
     dateTime: "Time"
 };
-var __replayAtStepN = 0;
 
 var __util = (function() {
 	var s = location.search.substring(1); 
@@ -81,6 +80,19 @@ const StepReplayer = (function(){
 	var atStep = 0;
 	var steps = [];
 	var uiWindow = null;
+	var stepTable = null;
+	var highlightedRowN = 0;
+
+	function highlightNextStep() {
+		var tBody = stepTable.querySelector("tbody"),
+			rowToHighlight = tBody.childNodes[atStep],
+			oldRow = tBody.childNodes[highlightedRowN];
+
+		oldRow && oldRow.classList.remove("highlight");
+		rowToHighlight && rowToHighlight.classList.add("highlight");
+		highlightedRowN = atStep;
+	};
+
 	return {
 		
 		setSteps: function(stepList) {
@@ -90,6 +102,11 @@ const StepReplayer = (function(){
 
 		setUiWindow: function(win) {
 			uiWindow = win;
+		},
+
+		setStepTable: function(t) {
+			stepTable = t;
+			highlightNextStep();
 		},
 
 		sendNextStep: function() {
@@ -116,6 +133,7 @@ const StepReplayer = (function(){
 																);
 			}
 			atStep++;
+			highlightNextStep();
 		},
 	
 		sendUpToStep: function(stepN) {
@@ -982,6 +1000,7 @@ function buildStepDisplay() {
 
 		stepTableLabel.innerHTML = "Steps ("+nSteps+")";
 		StepReplayer.setSteps(steps);
+		StepReplayer.setStepTable(stepContainer.querySelector("table"));
 	} else {
 		console.log("no stepDisplay element, skipping buildStepDisplay");
 	}
@@ -999,9 +1018,20 @@ function buildStudentChoices(probName) {
 	}
 }
 
-function buildOptions() {
-    //select which problem
-    var problemChoices = document.getElementById("problemChoicesForm");
+function buildUI() {
+    var singleStepBtn = document.getElementById("replayOneStepButton"),
+		nStepsBtn = document.getElementById("replayNStepsButton"),
+		nStepsInput = document.getElementById("stepNInput"),
+		allStepsBtn = document.getElementById("replayAllStepsButton");
+		
+	singleStepBtn.addEventListener("click", ()=>StepReplayer.sendNextStep());
+	nStepsBtn.addEventListener("click", ()=>{
+		let nSteps = nStepsInput.value;
+		StepReplayer.sendUpToStep(nSteps);
+	});
+	allStepsBtn.addEventListener("click", ()=>StepReplayer.sendAllSteps());
+
+	var problemChoices = document.getElementById("problemChoicesForm");
 	buildRadioChoices(problemChoices, "problem", problems, (radio)=>{buildStudentChoices(radio.value)});
 	buildStudentChoices(problems[0]);
 }
@@ -1020,7 +1050,7 @@ function sortSolutionPaths() {
 //called when papa finishes parsing
 function doneParse() {
    	sortSolutionPaths(); 
-	buildOptions();
+	buildUI();
 	buildGraphForProblem();
     buildVisualization();
 }

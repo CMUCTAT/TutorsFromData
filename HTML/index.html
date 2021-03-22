@@ -121,10 +121,11 @@
 					<input id="openInterfaceButton" class="myButton" type="button" value="Launch Tutor" onclick="openTutorInNewWindow()" />
 				</div>
 				<div id="replayControlContainer" class = "row_item column">
+					<input class="noStretch myButton" id="replayOneStepButton" class="myButton" type="button" value="Replay Next Step">
 					<div class="row">
-						<label class="noStretch" for="stepNInput">Replay up to step #</label><input type="text" id="stepNInput">
+						<input id="replayNStepsButton" type="button" class="noStretch myButton" value="Replay up to Step #"><input type="text" id="stepNInput">
 					</div>
-					<input class="noStretch myButton" id="replayButton" class="myButton" type="button" value="Replay" onclick="runReplay()">
+					<input class="noStretch myButton" id="replayAllStepsButton" class="myButton" type="button" value="Replay All Steps">
 				</div>
 			</div>
 			<br><br>

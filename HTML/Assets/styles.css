@@ -25,6 +25,10 @@
 	flex: 0 1 auto;
 }
 
+.highlight {
+	background-color: yellow;
+}
+
 #stepDisplayLabel {
 	text-align: center;
 	font-size: 20px;
