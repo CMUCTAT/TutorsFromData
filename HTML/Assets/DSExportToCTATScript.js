@@ -553,7 +553,7 @@ function buildVisualization() {
     document.getElementById("currentPathNum").value = 1//reset
 }
 
-function buildGraphForProblem() {
+function buildGraphForProblem(p) {
     //get params from the form (it should have defaults too)
     //for problem #:
     var chosenProblemIdx = 0;
@@ -564,7 +564,7 @@ function buildGraphForProblem() {
             break;
         }
     }
-	var chosenProblemName = problems[chosenProblemIdx];
+	var chosenProblemName = p || problems[chosenProblemIdx];
 	console.log("chosen problem: " + chosenProblemName);
 
     //ordered/unordered
@@ -663,7 +663,7 @@ function buildGraphForProblem() {
                     previousNode = graph.getNode(linksArray[j].getNextNode());
                 }
             }
-            if (matched) {
+            if (matched || input === "hint request") {
                 continue;
             }
             //new edge otherwise
@@ -824,7 +824,7 @@ function getRowVariables(thisrow){
         for (j in __fieldIdxs[KC_model]){
             var thisSkill = thisrow[__fieldIdxs[KC_model][j]];
             if (thisSkill!=""){
-                currSkills.push(thisSkill);
+                rowVars.currSkills.push(thisSkill);
             }
         }
 
@@ -1032,8 +1032,12 @@ function buildUI() {
 	allStepsBtn.addEventListener("click", ()=>StepReplayer.sendAllSteps());
 
 	var problemChoices = document.getElementById("problemChoicesForm");
-	buildRadioChoices(problemChoices, "problem", problems, (radio)=>{buildStudentChoices(radio.value)});
+	buildRadioChoices(problemChoices, "problem", problems, (radio)=>{
+		buildStudentChoices(radio.value);
+		buildGraphForProblem(radio.value);
+	});
 	buildStudentChoices(problems[0]);
+	buildGraphForProblem(problems[0]);
 }
 
 function sortSolutionPaths() {
@@ -1051,7 +1055,6 @@ function sortSolutionPaths() {
 function doneParse() {
    	sortSolutionPaths(); 
 	buildUI();
-	buildGraphForProblem();
     buildVisualization();
 }
 
