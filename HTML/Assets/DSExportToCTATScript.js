@@ -50,7 +50,13 @@ var __logKeyMap = {
 
 var __util = (function() {
 	var s = location.search.substring(1); 
-	var queryParams = JSON.parse('{"' + s.replace(/&/g, '","').replace(/=/g,'":"') + '"}', function(k, v) { return k===""?v:decodeURIComponent(v) });
+	var queryParams;
+	try {
+		queryParams = JSON.parse('{"' + s.replace(/&/g, '","').replace(/=/g,'":"') + '"}', function(k, v) { return k===""?v:decodeURIComponent(v) });
+	} catch(e) {
+		queryParams = {};
+	}
+
 	var tsRegex = /\.(\d{1,3})\sUTC$/; 
 	return {
 		getQueryParam: function(k) {
