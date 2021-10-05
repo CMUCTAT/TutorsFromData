@@ -110,8 +110,11 @@ const TabManager = (function() {
 				let host = window.location.origin;
 				let path = "/run_replay_student_assignment/"+pData.packageName+"/"+pData.problemSet+"/"+pName;
 				let query = "?school_name="+pData.school+"&class_name="+pData.class+"&assignment_name="+pData.assignment+"&student_name="+tabData.student+"&reset=true&first=true";
-				console.log("problem URL: ",host+path+query);
-				bc.postMessage({to: tabId, type: 'load', data: host+path+query});
+				let url = host+path+query,
+					urlEncoded = encodeURI(url);
+				console.log("problem URL (raw): ",url);
+				console.log("(encoded): ",urlEncoded);
+				bc.postMessage({to: tabId, type: 'load', data: urlEncoded});
 			}
 		},
 		
