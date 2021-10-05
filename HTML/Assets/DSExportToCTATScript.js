@@ -101,11 +101,16 @@ const TabManager = (function() {
 			tabData.probIdx++;
 			var studentProblems = studentTransactions[tabData.student];
 			var pName = Object.keys(studentProblems)[tabData.probIdx];
-			var pData = studentProblems[pName];
+			var pData = studentProblems[pName][0];
+			
+			console.log("load problem ",pName," for student ",tabData.student);
+			console.log("problem data: ",pData);
+			
 			if (pData) {
 				let host = window.location.origin;
-				let path = `/run_replay_student_assignment/${pData.packageName}/${pData.problemSet}/${pName}`;
-				let query = `?school_name=${pData.school}&class_name=${pData.class}&assignment_name=${pData.assignment}&student_name=${tabData.student}&reset=true&first=true`;
+				let path = "/run_replay_student_assignment/"+pData.packageName+"/"+pData.problemSet+"/"+pName;
+				let query = "?school_name="+pData.school+"&class_name="+pData.class+"&assignment_name="+pData.assignment+"&student_name="+tabData.student+"&reset=true&first=true";
+				console.log("problem URL: ",host+path+query);
 				bc.postMessage({to: tabId, type: 'load', data: host+path+query});
 			}
 		},
@@ -989,7 +994,7 @@ function simulateDataStream(e, parser){
 			schl = rowVars["School"],
 			classs = rowVars["Class"],
 			pCtxt = null
-			
+		console.log(problemName, pkg, pSet, ass, schl, classs);
 		if (timestamp) {
 			timestamp = __util.formatToolTime(timestamp);
 		} else {
@@ -1039,7 +1044,7 @@ function simulateDataStream(e, parser){
 			if (!thisProblem) {
 				thisProblem = {
 					transactions: [step],
-					packageName: pkg,
+					packageName: pkg || __util.getQueryParam("package"),
 					problemSet: pSet,
 					context: pCtxt,
 					school: schl,
@@ -1047,6 +1052,7 @@ function simulateDataStream(e, parser){
 					assignment: ass
 				}
 				thisProblemName.push(thisProblem);
+				console.log("added problem: ",thisProblem);
 			} else {
 				thisProblem.transactions.push(step);
 			}
