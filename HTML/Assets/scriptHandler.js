@@ -33,7 +33,7 @@ function runSimulation(){
 	nodesToHide = null;
 	i=0;
 	var problemChoices = document.getElementById("problemChoicesForm");
-	var l = problemChoices.children.length;
+	var l = problemChoices ? problemChoices.children.length : 0;
 	//need to remove all the problems
 	for (var tmp = 0; tmp < l; tmp++) {
 		problemChoices.removeChild(problemChoices.children[0]);

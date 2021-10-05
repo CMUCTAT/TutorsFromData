@@ -1,6 +1,7 @@
 //declare global variables
 var students = new Set();
 var problemsAndPaths = {}; //problemsAndPaths[problem name][studentID] = [{stepID: <id>, selection: s, action: a, input: i}, ... ]
+var studentTransactions = {};
 var __rowVarsRaw = [];
 var problems = [];
 var cy;
@@ -11,6 +12,8 @@ var allPaths;
 var cy2;
 var ui;
 var interfaceFilePath;
+
+var __stepReplayer;
 
 //user-determined parameters
 var detector_list = ["Detectors/system_misuse.js", "Detectors/critical_struggle.js", "Detectors/struggle__moving_average.js", "Detectors/student_doing_well__moving_average.js", "Detectors/idle.js"];
@@ -82,7 +85,68 @@ function getInterface() {
 	return interfaceFilePath;
 }
 
-const StepReplayer = (function(){
+const TabManager = (function() {
+	var tabMap = {};
+	
+	var tm = {
+		addTab: function(tabId, studentName) {
+			tabMap[tabId] = {
+				student: studentName,
+				probIdx: -1
+			}
+		},
+		
+		loadNextProblem: function(tabId) {
+			var tabData = tabMap[tabId];
+			tabData.probIdx++;
+			var studentProblems = studentTransactions[tabData.student];
+			var pName = Object.keys(studentProblems)[tabData.probIdx];
+			var pData = studentProblems[pName];
+			if (pData) {
+				let host = window.location.origin;
+				let path = `/run_replay_student_assignment/${pData.packageName}/${pData.problemSet}/${pName}`;
+				let query = `?school_name=${pData.school}&class_name=${pData.class}&assignment_name=${pData.assignment}&student_name=${tabData.student}&reset=true&first=true`;
+				bc.postMessage({to: tabId, type: 'load', data: host+path+query});
+			}
+		},
+		
+		runProblem: function(tabId) {
+			var tabData = tabMap[tabId];
+			var studentProblems = studentTransactions[tabData.student];
+			var probData = studentProblems[Object.keys(studentProblems)[tabData.probIdx]];
+			var steps = probData.transactions;
+			var stepIdx = 0;
+			var step;
+			var i = setInterval(()=>{
+				step = steps[stepIdx++];
+				if (step) {
+					this.sendStep(tabId, step);
+				} else {
+					clearInterval(i);
+				}
+			}, 1000);
+		},
+		
+		sendStep: function(tabId, step) {
+			bc.postMessage({to: tabId, type: 'step', data: step});
+		}
+	};
+	
+	var bc = new BroadcastChannel('student_transactions');
+	bc.onmessage = function(msg) {
+		msg = msg.data;
+		console.log(`got message ${msg.data} from ${msg.sender}`);
+		if (msg.data === "next problem") {
+			tm.loadNextProblem(msg.sender);
+		} else if (msg.data === "ready") {
+			tm.runProblem(msg.sender);
+		}
+	}
+	
+	return tm;
+})();
+
+function StepReplayer() {
 	var atStep = 0;
 	var steps = [];
 	var uiWindow = null;
@@ -99,66 +163,63 @@ const StepReplayer = (function(){
 		highlightedRowN = atStep;
 	};
 
-	return {
-		
-		setSteps: function(stepList) {
-			atStep = 0;
-			steps = stepList;
-		},
+	this.setSteps = function(stepList) {
+		atStep = 0;
+		steps = stepList;
+	}
 
-		setUiWindow: function(win) {
-			uiWindow = win;
-		},
+	this.setUiWindow = function(win) {
+		uiWindow = win;
+	}
 
-		setStepTable: function(t) {
-			stepTable = t;
-			highlightNextStep();
-		},
+	this.setStepTable = function(t) {
+		stepTable = t;
+		highlightNextStep();
+	}
 
-		sendNextStep: function() {
-			let sai = steps[atStep];
-			if (sai.input === "hint request") {
-				if (sai.selection === "hint") {
-					uiWindow.CTATCommShell.commShell.requestHint();
-					console.log("\trequest hint");
-				} else {
-					console.log("\tprevious/next button press, skip...");
-				}
+	this.sendNextStep = function() {
+		let sai = steps[atStep];
+		if (sai.input === "hint request") {
+			if (sai.selection === "hint") {
+				uiWindow.CTATCommShell.commShell.requestHint();
+				console.log("\trequest hint");
 			} else {
-				let ctatSAI = new CTATSAI(sai.selection, sai.action, sai.input),
-					stepType = "ATTEMPT";
-				console.log("\tsend sai: "+sai.selection+","+sai.action+","+sai.input+", ("+(sai.tutored ? "" : "un")+"tutored)");
-				uiWindow.CTATCommShell.commShell.processComponentAction(
-																ctatSAI, //sai
-																sai.tutored, //tutored
-																true, //behavior recorded
-																null,  //[deprecated]
-																stepType, //log type
-																null, //aTrigger
-																sai.transactionID //transaction id
-																);
+				console.log("\tprevious/next button press, skip...");
 			}
-			atStep++;
-			highlightNextStep();
-		},
-	
-		sendUpToStep: function(stepN) {
-			while(atStep < stepN) {
-				this.sendNextStep();
-			}
-		},
-
-		sendUpThroughStep: function(stepN) {
-			while(atStep <= stepN) {
-				this.sendNextStep();
-			}
-		},
-
-		sendAllSteps: function() {
-			this.sendUpToStep(steps.length);
-		},
+		} else {
+			let ctatSAI = new CTATSAI(sai.selection, sai.action, sai.input),
+				stepType = "ATTEMPT";
+			console.log("\tsend sai: "+sai.selection+","+sai.action+","+sai.input+", ("+(sai.tutored ? "" : "un")+"tutored)");
+			uiWindow.CTATCommShell.commShell.processComponentAction(
+															ctatSAI, //sai
+															sai.tutored, //tutored
+															true, //behavior recorded
+															null,  //[deprecated]
+															stepType, //log type
+															null, //aTrigger
+															sai.transactionID //transaction id
+															);
+		}
+		atStep++;
+		highlightNextStep();
 	};
-})();
+	
+	this.sendUpToStep = function(stepN) {
+		while(atStep < stepN) {
+			this.sendNextStep();
+		}
+	};
+
+	this.sendUpThroughStep = function(stepN) {
+		while(atStep <= stepN) {
+			this.sendNextStep();
+		}
+	};
+
+	this.sendAllSteps = function() {
+		this.sendUpToStep(steps.length);	
+	};
+};
 
 //<input type="button" value="Add Selected Path to BG" id="bgAddButton" onclick="addPathToBG()" />
 function addPathToBG(correct) {
@@ -267,7 +328,7 @@ function openTutorInNewWindow(onloadFunc) {
 				ui.window.onclose = (function() {
     			    ui = null;
     			}).bind(this);
-				StepReplayer.setUiWindow(ui.window);
+				__stepReplayer.setUiWindow(ui.window);
 			}
 		} else {
 			alert("specify the question file");
@@ -912,6 +973,7 @@ function simulateDataStream(e, parser){
 	//console.log("simulateDataStream(i=="+i+")", e, thisrow);
     if(!(rowVars = getRowVariables(thisrow))) return;
 	__rowVarsRaw.push(rowVars);
+	console.log("simulateDataStream got rowVars: ",rowVars);
     if (i!=0){
         let problemName = rowVars["Problem Name"],
 			studentId = rowVars["Anon Student Id"],
@@ -919,9 +981,28 @@ function simulateDataStream(e, parser){
 			action = rowVars["Action1"] ? "ButtonPressed" : rowVars["Action0"],
 			input = rowVars["Input"],
 			actor = (rowVars["Student Response Subtype"] === "tutor-performed") ? "tutor" : "student",
-			feedback = rowVars["Feedback Text"] || "";
-			timestamp = __util.formatToolTime(rowVars["CF (tool_event_time)"]); 
-		
+			feedback = rowVars["Feedback Text"] || "",
+			timestamp = rowVars["CF (tool_event_time)"],
+			pkg = rowVars["Level (Package)"],
+			pSet = rowVars["Level (ProblemSet)"],
+			ass = rowVars["Level (Assignment)"],
+			schl = rowVars["School"],
+			classs = rowVars["Class"],
+			pCtxt = null
+			
+		if (timestamp) {
+			timestamp = __util.formatToolTime(timestamp);
+		} else {
+			console.log("no timestamp for row "+i);
+		}
+	
+		if (!selection) {
+			selection = (rowVars["Selection_1"] === "hint") ? "hint" : rowVars["Selection"];
+			if (!selection) {
+				console.log("no selection for row "+i);
+			}
+		}
+
 		//task 2 stuff
         if (!problemsAndPaths.hasOwnProperty(problemName)) { //need to add the problem
             problemsAndPaths[problemName] = {};
@@ -930,9 +1011,15 @@ function simulateDataStream(e, parser){
         if (!problemsAndPaths[problemName].hasOwnProperty(studentId)) { //this student needs to be added to the problem
             problemsAndPaths[problemName][studentId] = [];
         }
-
-		//take sessionID into account ?
-
+		
+		if (!studentTransactions.hasOwnProperty(studentId)) {
+			studentTransactions[studentId] = {};
+		}
+		var thisStudent = studentTransactions[studentId];
+		if (!thisStudent[problemName]) {
+			thisStudent[problemName] = [];
+		}
+		var thisProblemName = thisStudent[problemName];
         //NtpDate is because it causes issues with the Large Dog Kennel; you get better results this way...
         if ((selection !== "NtpDate") && (actor === "student")) {
             let step = {
@@ -947,7 +1034,25 @@ function simulateDataStream(e, parser){
 				feedback: feedback
 			};
 			problemsAndPaths[problemName][studentId].push(step);
+			
+			var thisProblem = thisProblemName.find((p)=> p.context ? p.context === problemContext : true);
+			if (!thisProblem) {
+				thisProblem = {
+					transactions: [step],
+					packageName: pkg,
+					problemSet: pSet,
+					context: pCtxt,
+					school: schl,
+					class: classs,
+					assignment: ass
+				}
+				thisProblemName.push(thisProblem);
+			} else {
+				thisProblem.transactions.push(step);
+			}
         }
+		//take sessionID into account ?
+
 
         if (!(students.has(studentId))) {
             students.add(studentId);
@@ -956,12 +1061,12 @@ function simulateDataStream(e, parser){
     i++;
 }
 
-function buildRadioChoices(container, groupName, values, onChange) {
+function buildChoices(container, groupName, values, onChange, inputType) {
 	container.innerHTML = '';
 	values.forEach((value, idx)=>{
 		var radio = document.createElement("input");
         var label = document.createElement("label");
-        radio.type = "radio";
+        radio.type = inputType;
         radio.name = groupName;
         radio.value = value;
         if (idx==0) {
@@ -992,7 +1097,7 @@ function buildStepDisplay() {
 		steps.forEach((s, i1)=> {
 			let tr = document.createElement("tr");
 			tBody.appendChild(tr);
-			[i1, s.tutored, s.outcome, s.selection, s.action, s.input, s.feedback].forEach((c, i2)=>{
+			[i1, s.tutored, s.outcome, s.selection, s.action, s.input, s.feedback, s.timestamp].forEach((c, i2)=>{
 				if (i2 === 1) {
 					c = c ? "tutored" : "untutored";
 				} else if (i2 === 2) {
@@ -1005,8 +1110,9 @@ function buildStepDisplay() {
 		});
 
 		stepTableLabel.innerHTML = "Steps ("+nSteps+")";
-		StepReplayer.setSteps(steps);
-		StepReplayer.setStepTable(stepContainer.querySelector("table"));
+		__stepReplayer = new StepReplayer();
+		__stepReplayer.setSteps(steps);
+		__stepReplayer.setStepTable(stepContainer.querySelector("table"));
 	} else {
 		console.log("no stepDisplay element, skipping buildStepDisplay");
 	}
@@ -1017,33 +1123,61 @@ function buildStudentChoices(probName) {
 	var studentChoices = document.getElementById("studentChoicesForm"),
 		students = Object.keys(problemsAndPaths[probName]);
 	if (studentChoices) {
-		buildRadioChoices(studentChoices, "student", students, buildStepDisplay);
+		buildChoices(studentChoices, "student", students, buildStepDisplay, "radio");
 		buildStepDisplay();
 	} else {
 		console.log("no studentChoicesForm element, skipping buildStudentChoices");
 	}
 }
 
-function buildUI() {
-    var singleStepBtn = document.getElementById("replayOneStepButton"),
+function buildGraphUI() {
+	
+	var singleStepBtn = document.getElementById("replayOneStepButton"),
 		nStepsBtn = document.getElementById("replayNStepsButton"),
 		nStepsInput = document.getElementById("stepNInput"),
 		allStepsBtn = document.getElementById("replayAllStepsButton");
 		
-	singleStepBtn.addEventListener("click", ()=>StepReplayer.sendNextStep());
+	singleStepBtn.addEventListener("click", ()=>__stepReplayer.sendNextStep());
 	nStepsBtn.addEventListener("click", ()=>{
 		let nSteps = nStepsInput.value;
-		StepReplayer.sendUpToStep(nSteps);
+		__stepReplayer.sendUpToStep(nSteps);
 	});
-	allStepsBtn.addEventListener("click", ()=>StepReplayer.sendAllSteps());
+	allStepsBtn.addEventListener("click", ()=>__stepReplayer.sendAllSteps());
 
 	var problemChoices = document.getElementById("problemChoicesForm");
-	buildRadioChoices(problemChoices, "problem", problems, (radio)=>{
+	buildChoices(problemChoices, "problem", problems, (radio)=>{
 		buildStudentChoices(radio.value);
 		buildGraphForProblem(radio.value);
-	});
+	}, "radio");
 	buildStudentChoices(problems[0]);
 	buildGraphForProblem(problems[0]);
+}
+
+function buildEnactmentsUI() {
+	var allStepsBtn = document.getElementById("replayAllStepsButton");
+	var studentSelect = document.getElementById("studentSelectForm");
+	buildChoices(studentSelect, "students", Object.keys(studentTransactions), null, "checkbox");
+	allStepsBtn.addEventListener("click", replaySelectedStudents);
+}
+
+function buildUI() {
+	if (window.__interface === "graph") {
+		buildGraphUI();
+	} else if (window.__interface === "enactments") {
+		buildEnactmentsUI();
+	}
+}
+
+function replaySelectedStudents() {
+	let selected = Array.prototype.filter.call(document.getElementById("studentSelectForm").querySelectorAll("input[type='checkbox']"), (i)=>i.checked).map((i)=>i.value);
+	selected.forEach((s)=> {
+		openTabForStudent(s);
+	});
+}
+
+function openTabForStudent(student) {
+	let ui = window.open(`tutorContainer.html?tab_id=${student}`);
+	TabManager.addTab(student, student);
 }
 
 function sortSolutionPaths() {
@@ -1081,7 +1215,7 @@ function runReplay() {
 	if (ui && !ui.closed) {
 		
 		//sendSAIsToTutor( sais );
-		StepReplayer.sendAllSteps();
+		__stepReplayer.sendAllSteps();
 	
 	} else {
 		alert("first open the tutor using the 'launch interface' button");
