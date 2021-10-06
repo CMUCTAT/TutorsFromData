@@ -1185,7 +1185,9 @@ function replaySelectedStudents() {
 }
 
 function openTabForStudent(student) {
+	console.log("OpenTabForStudent: ",student);
 	let ui = window.open(`tutorContainer.html?tab_id=${student}`);
+	console.log("got browser context ",ui);
 	TabManager.addTab(student, student);
 }
 
@@ -1204,7 +1206,9 @@ function sortSolutionPaths() {
 function doneParse() {
    	sortSolutionPaths(); 
 	buildUI();
-    buildVisualization();
+	if (window.__interface === "graph") {
+		buildVisualization();
+	}
 }
 
 function runReplay() {
