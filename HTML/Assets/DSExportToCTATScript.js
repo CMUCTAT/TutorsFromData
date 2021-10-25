@@ -100,15 +100,19 @@ const TabManager = (function() {
 			var tabData = tabMap[tabId];
 			tabData.probIdx++;
 			var studentProblems = studentTransactions[tabData.student];
-			var pName = Object.keys(studentProblems)[tabData.probIdx];
-			var pData = studentProblems[pName][0];
+			var pNameAndIndex = studentProblems.__problemOrder[tabData.probIdx],
+				pName = pNameAndIndex.name;
+			var pData = studentProblems[pName][pNameAndIndex.idx];
 			
 			console.log("load problem ",pName," for student ",tabData.student);
 			console.log("problem data: ",pData);
 			
 			if (pData) {
 				let host = window.location.origin;
-				let path = "/run_replay_student_assignment/"+pData.packageName+"/"+pData.problemSet+"/"+pName;
+				let path = "/run_replay_problem_set_as_assignment/"+pData.packageName+"/"+pData.problemSet+"/"+pName;
+				if (!isNaN(parseInt(pData.context, 10))) {
+					path += '/'+pData.context;
+				}
 				let query = "?school_name="+pData.school+"&class_name="+pData.class+"&assignment_name="+pData.assignment+"&student_name="+tabData.student+"&reset=true&first=true";
 				let url = host+path+query,
 					urlEncoded = encodeURI(url);
@@ -1191,20 +1195,44 @@ function openTabForStudent(student) {
 	TabManager.addTab(student, student);
 }
 
+function sortTransactionList(tList) {
+	tList.sort((sai1, sai2) => {
+		return sai1.timestamp.localeCompare(sai2.timestamp);
+	});
+}
+
 function sortSolutionPaths() {
 	for (let problemId in problemsAndPaths) {
 		let problem = problemsAndPaths[problemId];
 		for (let studentId in problem) {
-			problem[studentId].sort((sai1, sai2) => {
-				return sai1.timestamp.localeCompare(sai2.timestamp);
+			sortTransactionList(problem[studentId]);
+		}
+	}
+}
+
+function sortReplayEnactmentData() {
+	for (let student in studentTransactions) {
+		let thisStudent = studentTransactions[student];
+		let pOrder = [];
+		for (let problem in thisStudent) {
+			let thisProblem = thisStudent[problem];
+			thisProblem.forEach((prob, i)=> {
+				sortTransactionList(prob.transactions);
+				pOrder.push({name: problem, idx: i}); 
 			});
 		}
+		pOrder.sort((probA, probB) => {
+			return thisStudent[probA.name][probA.idx].transactions[0].timestamp.localeCompare(thisStudent[probB.name][probB.idx].transactions[0].timestamp);
+		});
+		thisStudent.__problemOrder = pOrder;
 	}
 }
 
 //called when papa finishes parsing
 function doneParse() {
    	sortSolutionPaths(); 
+	sortReplayEnactmentData();
+	
 	buildUI();
 	if (window.__interface === "graph") {
 		buildVisualization();
