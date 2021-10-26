@@ -15,7 +15,7 @@
 								let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
 								tutor.CTATCommShell.commShell.addGlobalEventListener({
 									processCommShellEvent: function(e, msg) {
-										if (e === "Correct Action") {
+										if (e === "CorrectAction") {
 											console.log("correct action, msg is ",msg);
 										}
 									}
