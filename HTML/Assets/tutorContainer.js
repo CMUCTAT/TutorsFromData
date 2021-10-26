@@ -11,7 +11,7 @@
 					tutorFrame.onload = function() {
 						tutorFrame.contentWindow.addEventListener("message", (e)=> {
 							console.log("tutor frame got message", e.data);
-							window.postMessage(e, "*");
+							window.postMessage(e.data, "*");
 						});
 					}
 					tutorFrame.src = msg.data;
