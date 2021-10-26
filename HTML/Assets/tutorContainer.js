@@ -39,6 +39,7 @@
 		console.log("got message ",msg);
 		if (msg.command === "tutorready") {
 			console.log("tutor ready msg");
+			bc.postMessage({sender: myId, data: "ready"});
 		}
 	});
 	
