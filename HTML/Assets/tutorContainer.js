@@ -17,10 +17,11 @@
 					tutorFrame.src = msg.data;
 				break;
 				case 'step': 
-					let ctatSAI = new CTATSAI(msg.data.selection, msg.data.action, msg.data.input),
+					let tutor = tutorFrame.contentWindow.document.getElementById("interface");
+					let ctatSAI = new tutor.contentWindow.CTATSAI(msg.data.selection, msg.data.action, msg.data.input),
 					stepType = "ATTEMPT";
 					console.log("\tsend sai: "+msg.data.selection+","+msg.data.action+","+msg.data.input+", ("+(msg.data.tutored ? "" : "un")+"tutored)");
-					tutorFrame.contentWindow.CTATCommShell.commShell.processComponentAction(
+					tutor.contentWindow.CTATCommShell.commShell.processComponentAction(
 																ctatSAI, //sai
 																msg.data.tutored, //tutored
 																true, //behavior recorded

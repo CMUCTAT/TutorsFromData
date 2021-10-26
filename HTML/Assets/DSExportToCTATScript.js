@@ -125,7 +125,8 @@ const TabManager = (function() {
 		runProblem: function(tabId) {
 			var tabData = tabMap[tabId];
 			var studentProblems = studentTransactions[tabData.student];
-			var probData = studentProblems[Object.keys(studentProblems)[tabData.probIdx]];
+			var pNameAndIndex = studentProblems.__problemOrder[tabData.probIdx];
+			var probData = studentProblems[pNameAndIndex.name][pNameAndIndex.idx];
 			var steps = probData.transactions;
 			var stepIdx = 0;
 			var step;
