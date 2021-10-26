@@ -10,7 +10,7 @@
 				case 'load':
 					tutorFrame.onload = function() {
 						console.log("iframe load event");
-						tutorFrame.window.addEventListener("noolsModelLoaded", ()=> {
+						tutorFrame.contentWindow.addEventListener("noolsModelLoaded", ()=> {
 							console.log("nools model loaded event");
 						});
 					};
@@ -20,7 +20,7 @@
 					let ctatSAI = new CTATSAI(msg.data.selection, msg.data.action, msg.data.input),
 					stepType = "ATTEMPT";
 					console.log("\tsend sai: "+msg.data.selection+","+msg.data.action+","+msg.data.input+", ("+(msg.data.tutored ? "" : "un")+"tutored)");
-					tutorFrame.window.CTATCommShell.commShell.processComponentAction(
+					tutorFrame.contentWindow.CTATCommShell.commShell.processComponentAction(
 																ctatSAI, //sai
 																msg.data.tutored, //tutored
 																true, //behavior recorded
