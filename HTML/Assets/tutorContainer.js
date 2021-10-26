@@ -8,6 +8,12 @@
 		if (msg.to === myId) {
 			switch(msg.type) {
 				case 'load':
+					tutorFrame.onload = function() {
+						console.log("iframe load event");
+						tutorFrame.window.addEventListener("noolsModelLoaded", ()=> {
+							console.log("nools model loaded event");
+						});
+					};
 					tutorFrame.src = msg.data;
 				break;
 				case 'step': 
@@ -28,9 +34,6 @@
 		}
 	}
 	
-	tutorFrame.window.addEventListener("noolsModelLoaded", ()=> {
-		console.log("nools model loaded event");
-	});
 	
 	bc.postMessage({sender: myId, data: 'next problem'});
 })();
