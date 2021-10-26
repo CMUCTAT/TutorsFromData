@@ -28,5 +28,9 @@
 		}
 	}
 	
+	tutorFrame.window.addEventListener("noolsModelLoaded", ()=> {
+		console.log("nools model loaded event");
+	});
+	
 	bc.postMessage({sender: myId, data: 'next problem'});
 })();
