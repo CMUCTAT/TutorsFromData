@@ -8,6 +8,12 @@
 		if (msg.to === myId) {
 			switch(msg.type) {
 				case 'load':
+					tutorFrame.onload = function() {
+						tutorFrame.contentWindow.addEventListener("message", (e)=> {
+							console.log("tutor frame got message", e.data);
+							window.postMessage(e, "*");
+						});
+					}
 					tutorFrame.src = msg.data;
 				break;
 				case 'step': 
