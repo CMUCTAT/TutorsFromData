@@ -11,7 +11,17 @@
 					tutorFrame.onload = function() {
 						tutorFrame.contentWindow.addEventListener("message", (e)=> {
 							console.log("tutor frame got message", e.data);
-							window.postMessage(e.data, "*");
+							if (e.data.command === "tutorready") {
+								let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
+								tutor.CTATCommShell.commShell.addGlobalEventListener({
+									processCommShellEvent: function(e, msg) {
+										if (e === "Correct Action") {
+											console.log("correct action, msg is ",msg);
+										}
+									}
+								});
+								window.postMessage(e.data, "*");
+							}
 						});
 					}
 					tutorFrame.src = msg.data;
