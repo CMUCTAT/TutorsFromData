@@ -91,7 +91,7 @@ function genReplayUrl(problemData) {
 	if (!isNaN(parseInt(problemData.context, 10))) {
 		path += '/'+problemData.context;
 	}
-	let query = "?school_name="+problemData.school+"&class_name="+problemData.class+"&assignment_name="+problemData.assignment+"&student_name="+tabData.student+"&reset=true&first=true";
+	let query = "?school_name="+problemData.school+"&class_name="+problemData.class+"&assignment_name="+problemData.assignment+"&student_name="+problemData.studentName+"&reset=true&first=true";
 	let url = host+path+query,
 		urlEncoded = encodeURI(url);
 
@@ -1080,6 +1080,7 @@ function simulateDataStream(e, parser){
 			var thisProblem = thisProblemName.find((p)=> p.context ? p.context === problemContext : true);
 			if (!thisProblem) {
 				thisProblem = {
+					studentName: studentId, 
 					problemName: problemName,
 					transactions: [step],
 					packageName: pkg || __util.getQueryParam("package"),
