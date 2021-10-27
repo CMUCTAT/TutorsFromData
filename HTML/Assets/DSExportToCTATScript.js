@@ -85,6 +85,19 @@ function getInterface() {
 	return interfaceFilePath;
 }
 
+function genReplayUrl(problemData) {
+	let host = window.location.origin;
+	let path = "/run_replay_problem_set_as_assignment/"+problemData.packageName+"/"+problemData.problemSet+"/"+pName;
+	if (!isNaN(parseInt(problemData.context, 10))) {
+		path += '/'+problemData.context;
+	}
+	let query = "?school_name="+problemData.school+"&class_name="+problemData.class+"&assignment_name="+problemData.assignment+"&student_name="+tabData.student+"&reset=true&first=true";
+	let url = host+path+query,
+		urlEncoded = encodeURI(url);
+
+	return urlEncoded;
+}
+
 const TabManager = (function() {
 	var tabMap = {};
 	
@@ -94,6 +107,16 @@ const TabManager = (function() {
 				student: studentName,
 				probIdx: -1
 			}
+		},
+		
+		sendProblemUrls: function(tabId) {
+			var studentProblems = studentTransactions[tabMap[tabId].student];
+			var urls = studentProblems.__problemOrder.map((pNameAndIndex) => {
+				let pData = studentProblems[pNameAndIndex.name][pNameAndIndex.idx];
+				return genReplayUrl(pData);
+			});
+			
+			bc.postMessage({to: tabId, type: 'problem_urls', data: urls});
 		},
 		
 		loadNextProblem: function(tabId) {
@@ -122,10 +145,10 @@ const TabManager = (function() {
 			}
 		},
 		
-		runProblem: function(tabId) {
+		runProblem: function(tabId, probIdx) {
 			var tabData = tabMap[tabId];
 			var studentProblems = studentTransactions[tabData.student];
-			var pNameAndIndex = studentProblems.__problemOrder[tabData.probIdx];
+			var pNameAndIndex = studentProblems.__problemOrder[probIdx];
 			var probData = studentProblems[pNameAndIndex.name][pNameAndIndex.idx];
 			var steps = probData.transactions;
 			var stepIdx = 0;
@@ -149,10 +172,16 @@ const TabManager = (function() {
 	bc.onmessage = function(msg) {
 		msg = msg.data;
 		console.log(`got message ${msg.data} from ${msg.sender}`);
-		if (msg.data === "next problem") {
-			tm.loadNextProblem(msg.sender);
-		} else if (msg.data === "ready") {
-			tm.runProblem(msg.sender);
+		switch(msg.type) {
+			case "next problem" :
+				tm.loadNextProblem(msg.sender);
+			break;
+			case "send steps":
+				tm.runProblem(msg.sender, msg.data);
+			break;
+			case "get urls":
+				tm.sendProblemUrls(msg.sender);
+			break;
 		}
 	}
 	

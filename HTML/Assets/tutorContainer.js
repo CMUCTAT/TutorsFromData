@@ -7,19 +7,20 @@
 		msg = msg.data;
 		if (msg.to === myId) {
 			switch(msg.type) {
+				case 'problem_urls':
+					window.__problemUrls = msg.data;
+					window.__problemUrls.__current = -1;
+					bc.postMessage({sender: myId, type: "next problem"});
+				break;
 				case 'load':
 					tutorFrame.onload = function() {
 						tutorFrame.contentWindow.addEventListener("message", (e)=> {
 							console.log("tutor frame got message", e.data);
 							if (e.data.command === "tutorready") {
+								window.__problemUrls.__current++;
 								let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
-								tutor.CTATCommShell.commShell.addGlobalEventListener({
-									processCommShellEvent: function(e, msg) {
-										if (e === "CorrectAction") {
-											console.log("correct action, msg is ",msg);
-										}
-									}
-								});
+								tutor.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
+								
 								window.postMessage(e.data, "*");
 							}
 						});
@@ -50,9 +51,9 @@
 		console.log("got message ",msg);
 		if (msg.command === "tutorready") {
 			console.log("tutor ready msg");
-			bc.postMessage({sender: myId, data: "ready"});
+			bc.postMessage({sender: myId, type: "send steps", data: window.__problemUrls.__current});
 		}
 	});
 	
-	bc.postMessage({sender: myId, data: 'next problem'});
+	bc.postMessage({sender:	myId, type: 'get urls'});
 })();
