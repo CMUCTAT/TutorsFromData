@@ -87,7 +87,7 @@ function getInterface() {
 
 function genReplayUrl(problemData) {
 	let host = window.location.origin;
-	let path = "/run_replay_problem_set_as_assignment/"+problemData.packageName+"/"+problemData.problemSet+"/"+pName;
+	let path = "/run_replay_problem_set_as_assignment/"+problemData.packageName+"/"+problemData.problemSet+"/"+problemData.problemName;
 	if (!isNaN(parseInt(problemData.context, 10))) {
 		path += '/'+problemData.context;
 	}
@@ -1080,6 +1080,7 @@ function simulateDataStream(e, parser){
 			var thisProblem = thisProblemName.find((p)=> p.context ? p.context === problemContext : true);
 			if (!thisProblem) {
 				thisProblem = {
+					problemName: problemName,
 					transactions: [step],
 					packageName: pkg || __util.getQueryParam("package"),
 					problemSet: pSet,
