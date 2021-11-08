@@ -164,9 +164,8 @@ const TabManager = (function() {
 			var studentProblems = studentTransactions[tabData.student];
 			var pNameAndIndex = studentProblems.__problemOrder[probIdx];
 			var probData = studentProblems[pNameAndIndex.name][pNameAndIndex.idx];
-			var steps = probData.transactions;
-			var stepIdx = 0;
-			var step;
+			
+			console.log("run problem ",probIdx, "for tabId ",tabId);
 			
 			this.sendNextStep(tabId, 0);
 		},
@@ -178,7 +177,7 @@ const TabManager = (function() {
 				nextStep = steps[stepIdx + 1];
 			
 			
-			this.sendStep(step);
+			this.sendStep(tabId, step);
 			if (nextStep) {
 				let delay = new Date(nextStep.timestamp) - new Date(step.timestamp);
 				
