@@ -198,7 +198,7 @@ const TabManager = (function() {
 	var bc = new BroadcastChannel('student_transactions');
 	bc.onmessage = function(msg) {
 		msg = msg.data;
-		console.log(`got message ${msg.data} from ${msg.sender}`);
+		console.log(`got message ${msg.type} ${msg.data} from ${msg.sender}`);
 		switch(msg.type) {
 			case "next problem" :
 				tm.loadNextProblem(msg.sender);
