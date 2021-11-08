@@ -178,7 +178,7 @@ const TabManager = (function() {
 				nextStep = steps[stepIdx + 1];
 			
 			
-			sendStep(step);
+			this.sendStep(step);
 			if (nextStep) {
 				let delay = new Date(nextStep.timestamp) - new Date(step.timestamp);
 				
