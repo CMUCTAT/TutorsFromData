@@ -167,6 +167,7 @@ const TabManager = (function() {
 			
 			console.log("run problem ",probIdx, "for tabId ",tabId);
 			
+			this.setProbIndex(tabId, probIdx);
 			this.sendNextStep(tabId, 0);
 		},
 		
