@@ -79,6 +79,8 @@ var __util = (function() {
 	};
 })();
 
+const MAX_STEP_DELAY = parseInt(__util.getQueryParam("max_step_delay"), 10) || Number.POSITIVE_INFINITY;
+
 function getInterface() {
     interfaceFilePath = (__util.getQueryParam("interfaceFilePath") || document.getElementById('fileItem2').files[0].name);
     console.log("getInterface", interfaceFilePath, "typeof", typeof(interfaceFilePath), "\n question_file", CTATConfiguration.get('question_file'))
@@ -107,6 +109,18 @@ const TabManager = (function() {
 				student: studentName,
 				probIdx: -1
 			}
+		},
+		
+		setProbIndex: function(tabId, probIdx) {
+			tabMap[tabId].probIdx = probIdx;
+		},
+		
+		getCurrentProbData: function(tabId) {
+			var tabData = tabMap[tabId];
+			var studentProblems = studentTransactions[tabData.student];
+			var pNameAndIndex = studentProblems.__problemOrder[tabData.probIdx];
+			var probData = studentProblems[pNameAndIndex.name][pNameAndIndex.idx];
+			return probData;
 		},
 		
 		sendProblemUrls: function(tabId) {
@@ -153,14 +167,26 @@ const TabManager = (function() {
 			var steps = probData.transactions;
 			var stepIdx = 0;
 			var step;
-			var i = setInterval(()=>{
-				step = steps[stepIdx++];
-				if (step) {
-					this.sendStep(tabId, step);
-				} else {
-					clearInterval(i);
-				}
-			}, 1000);
+			
+			this.sendNextStep(tabId, 0);
+		},
+		
+		sendNextStep: function(tabId, stepIdx) {
+			var pData = this.getCurrentProbData(tabId),
+				steps = pData.transactions,
+				step = steps[stepIdx],
+				nextStep = steps[stepIdx + 1];
+			
+			
+			sendStep(step);
+			if (nextStep) {
+				let delay = new Date(nextStep.timestamp) - new Date(step.timestamp);
+				
+				console.log("sendNextStep, setting delay = ",delay);
+				
+				delay = delay > MAX_STEP_DELAY ? MAX_STEP_DELAY : delay;
+				setTimeout(delay, this.sendNextStep(tabId, stepIdx++)); 
+			}
 		},
 		
 		sendStep: function(tabId, step) {
