@@ -173,8 +173,9 @@ const TabManager = (function() {
 		sendNextStep: function(tabId, stepIdx) {
 			var pData = this.getCurrentProbData(tabId),
 				steps = pData.transactions,
+				nextStepIdx = stepIdx+1,
 				step = steps[stepIdx],
-				nextStep = steps[stepIdx + 1];
+				nextStep = steps[nextStepIdx];
 			
 			
 			this.sendStep(tabId, step);
@@ -184,7 +185,7 @@ const TabManager = (function() {
 				console.log("sendNextStep, this idx is ",stepIdx," setting delay = ",delay);
 				
 				delay = delay > MAX_STEP_DELAY ? MAX_STEP_DELAY : delay;
-				setTimeout(delay, this.sendNextStep(tabId, ++stepIdx)); 
+				setTimeout(delay, this.sendNextStep.bind(this, tabId, nextStepIdx)); 
 			}
 		},
 		
