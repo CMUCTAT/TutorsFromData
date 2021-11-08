@@ -185,7 +185,7 @@ const TabManager = (function() {
 				console.log("sendNextStep, this idx is ",stepIdx," setting delay = ",delay);
 				
 				delay = delay > MAX_STEP_DELAY ? MAX_STEP_DELAY : delay;
-				setTimeout(delay, this.sendNextStep.bind(this, tabId, nextStepIdx)); 
+				setTimeout(this.sendNextStep.bind(this, tabId, nextStepIdx), delay); 
 			}
 		},
 		
