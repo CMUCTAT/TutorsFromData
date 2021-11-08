@@ -182,14 +182,15 @@ const TabManager = (function() {
 			if (nextStep) {
 				let delay = new Date(nextStep.timestamp) - new Date(step.timestamp);
 				
-				console.log("sendNextStep, setting delay = ",delay);
+				console.log("sendNextStep, this idx is ",stepIdx," setting delay = ",delay);
 				
 				delay = delay > MAX_STEP_DELAY ? MAX_STEP_DELAY : delay;
-				setTimeout(delay, this.sendNextStep(tabId, stepIdx++)); 
+				setTimeout(delay, this.sendNextStep(tabId, ++stepIdx)); 
 			}
 		},
 		
 		sendStep: function(tabId, step) {
+			console.log("send step ",step);
 			bc.postMessage({to: tabId, type: 'step', data: step});
 		}
 	};
