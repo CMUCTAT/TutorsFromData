@@ -1,15 +1,15 @@
 (function() {
 	
+	var readyFired = {};
 	function iFrameReady(iFrame, fn) {
 		var timer;
-		var fired = {};
 
 		function ready() {
 			var doc = iFrame.contentDocument || iFrame.contentWindow.document;
 			console.log("ready...");
-			if (!fired[doc.URL]) {
+			if (!readyFired[doc.URL]) {
 				console.log("haven't fired for this url, firing");
-				fired[doc.URL] = true;
+				readyFired[doc.URL] = true;
 				clearTimeout(timer);
 				fn.call(this);
 			} else {
@@ -36,13 +36,14 @@
 
 		function checkLoaded() {
 			
-			console.log("checkLoaded...");
-			
 			var doc = iFrame.contentDocument || iFrame.contentWindow.document;
+			
+			console.log("checkLoaded, url is ",doc.URL);
+			
 			// We can tell if there is a dummy document installed because the dummy document
 			// will have an URL that starts with "about:".  The real document will not have that URL
 			if (doc.URL.indexOf("about:") !== 0) {
-				if (!fired[doc.URL]) {
+				if (!readyFired[doc.URL]) {
 					if (doc.readyState === "interactive") {
 						ready.call(doc);
 					} else {
