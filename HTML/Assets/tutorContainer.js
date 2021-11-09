@@ -66,18 +66,16 @@
 					
 					iFrameReady(tutorFrame, function(e) {
 						console.log("tutorFrame DOMContentLoaded event");
-						if (tutorFrame.location.href !== "about:blank") {
-							tutorFrame.contentWindow.addEventListener("message", (e)=> {
-								console.log("tutor frame got message", e.data);
-								if (e.data.command === "tutorready") {
-									window.__problemUrls.__current++;
-									let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
-									tutor.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
-									
-									window.postMessage(e.data, "*");
-								}
-							});
-						}
+						tutorFrame.contentWindow.addEventListener("message", (e)=> {
+							console.log("tutor frame got message", e.data);
+							if (e.data.command === "tutorready") {
+								window.__problemUrls.__current++;
+								let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
+								tutor.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
+								
+								window.postMessage(e.data, "*");
+							}
+						});
 					});
 					
 					tutorFrame.src = msg.data;
