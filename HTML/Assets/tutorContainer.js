@@ -13,9 +13,9 @@
 					bc.postMessage({sender: myId, type: "next problem"});
 				break;
 				case 'load':
-					tutorFrame.addEventListener("readystatechange", function(e) {
-						console.log("tutorFrame readystatechange event, state is ",tutorFrame.readyState);
-						if (tutorFrame.location.href !== "about:blank" && tutorFrame.readyState === "loading") {
+					tutorFrame.addEventListener("DOMContentLoaded", function(e) {
+						console.log("tutorFrame DOMContentLoaded event");
+						if (tutorFrame.location.href !== "about:blank") {
 							tutorFrame.contentWindow.addEventListener("message", (e)=> {
 								console.log("tutor frame got message", e.data);
 								if (e.data.command === "tutorready") {
