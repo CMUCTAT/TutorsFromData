@@ -27,7 +27,7 @@
 								}
 							});
 						}
-					}
+					});
 					tutorFrame.src = msg.data;
 				break;
 				case 'step': 
