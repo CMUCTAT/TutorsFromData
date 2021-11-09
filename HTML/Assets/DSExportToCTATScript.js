@@ -79,7 +79,7 @@ var __util = (function() {
 	};
 })();
 
-const MAX_STEP_DELAY = parseInt(__util.getQueryParam("max_step_delay"), 10) || Number.POSITIVE_INFINITY;
+const MAX_STEP_DELAY = parseInt(__util.getQueryParam("max_step_delay"), 10) * 1000 || Number.POSITIVE_INFINITY;
 
 function getInterface() {
     interfaceFilePath = (__util.getQueryParam("interfaceFilePath") || document.getElementById('fileItem2').files[0].name);
