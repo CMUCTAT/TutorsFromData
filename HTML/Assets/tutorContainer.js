@@ -100,7 +100,27 @@
 				break;
 				case 'load':
 					
-					iFrameReady(tutorFrame, tutorFrameReady);
+					//iFrameReady(tutorFrame, tutorFrameReady);
+					tutorFrame.onload = function() {
+						let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
+						tutor.addEventListener("noolsModelLoaded", ()=> {
+							
+							console.log("noolsModelLoaded event");
+							
+							window.__problemUrls.__current++;
+							tutor.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
+							tutor.CTATCommShell.commShell.addGlobalEventListener({
+								processCommShellEvent: function(e, msg) {
+									console.log("processCommShellEvent: ",e);
+									if (e === "CorrectAction" && msg.getSAI().getSelection() === "done") {
+										window.postMessage({command: "problem_over"});
+									}
+								}
+							});
+							window.postMessage({command: "tutorready"}, "*");
+						});
+					};
+					
 					
 					tutorFrame.src = msg.data;
 				break;
@@ -133,7 +153,7 @@
 				break;
 			case "problem_over":
 				console.log("problem done msg");
-				iFrameReady(tutorFrame, tutorFrameReady);
+		//		iFrameReady(tutorFrame, tutorFrameReady);
 				break;
 		}  
 	});
