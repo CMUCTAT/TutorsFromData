@@ -182,10 +182,8 @@ const TabManager = (function() {
 			this.sendStep(tabId, step);
 			if (nextStep) {
 				let delay = new Date(nextStep.timestamp) - new Date(step.timestamp);
-				
-				console.log("sendNextStep, this idx is ",stepIdx," setting delay = ",delay);
-				
 				delay = delay > MAX_STEP_DELAY ? MAX_STEP_DELAY : delay;
+				console.log("sendNextStep, this idx is ",stepIdx," setting delay = ",delay);
 				setTimeout(this.sendNextStep.bind(this, tabId, nextStepIdx), delay); 
 			}
 		},
