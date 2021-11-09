@@ -6,10 +6,14 @@
 
 		function ready() {
 			var doc = iFrame.contentDocument || iFrame.contentWindow.document;
+			console.log("ready...");
 			if (!fired[doc.URL]) {
+				console.log("haven't fired for this url, firing");
 				fired[doc.URL] = true;
 				clearTimeout(timer);
 				fn.call(this);
+			} else {
+				console.log("already fired for this url, ignoring");
 			}
 		}
 
@@ -31,19 +35,28 @@
 		}
 
 		function checkLoaded() {
+			
+			console.log("checkLoaded...");
+			
 			var doc = iFrame.contentDocument || iFrame.contentWindow.document;
 			// We can tell if there is a dummy document installed because the dummy document
 			// will have an URL that starts with "about:".  The real document will not have that URL
-			if (doc.URL.indexOf("about:") !== 0 && !fired[doc.URL]) {
-				if (doc.readyState === "interactive") {
-					ready.call(doc);
+			if (doc.URL.indexOf("about:") !== 0) {
+				if (!fired[doc.URL]) {
+					if (doc.readyState === "interactive") {
+						ready.call(doc);
+					} else {
+						// set event listener for DOMContentLoaded on the new document
+						addEvent(doc, "DOMContentLoaded", ready);
+						addEvent(doc, "readystatechange", readyState);
+					}
 				} else {
-					// set event listener for DOMContentLoaded on the new document
-					addEvent(doc, "DOMContentLoaded", ready);
-					addEvent(doc, "readystatechange", readyState);
+					console.log("already fired for this url, waiting");
+					timer = setTimeout(checkLoaded, 1);
 				}
 			} else {
 				// still same old original document, so keep looking for content or new document
+				console.log("dummy doc, waiting");
 				timer = setTimeout(checkLoaded, 1);
 			}
 		}
