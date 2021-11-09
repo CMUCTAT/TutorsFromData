@@ -2,11 +2,12 @@
 	
 	function iFrameReady(iFrame, fn) {
 		var timer;
-		var fired = false;
+		var fired = {};
 
 		function ready() {
-			if (!fired) {
-				fired = true;
+			var doc = iFrame.contentDocument || iFrame.contentWindow.document;
+			if (!fired[doc.URL]) {
+				fired[doc.URL] = true;
 				clearTimeout(timer);
 				fn.call(this);
 			}
