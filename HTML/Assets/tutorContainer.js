@@ -58,7 +58,7 @@
 				window.__problemUrls.__current++;
 				let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
 				tutor.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
-				tutor.CTATCommShell.addGlobalEventListener({
+				tutor.CTATCommShell.commShell.addGlobalEventListener({
 					processCommShellEvent: function(e, msg) {
 						console.log("processCommShellEvent: ",e);
 						if (e === "CorrectAction" && msg.getSAI().getSelection() === "done") {
