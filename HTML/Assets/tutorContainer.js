@@ -13,17 +13,20 @@
 					bc.postMessage({sender: myId, type: "next problem"});
 				break;
 				case 'load':
-					tutorFrame.onload = function() {
-						tutorFrame.contentWindow.addEventListener("message", (e)=> {
-							console.log("tutor frame got message", e.data);
-							if (e.data.command === "tutorready") {
-								window.__problemUrls.__current++;
-								let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
-								tutor.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
-								
-								window.postMessage(e.data, "*");
-							}
-						});
+					tutorFrame.addEventListener("readystatechange", function(e) {
+						console.log("tutorFrame readystatechange event, state is ",tutorFrame.readyState);
+						if (tutorFrame.location.href !== "about:blank" && tutorFrame.readyState === "loading") {
+							tutorFrame.contentWindow.addEventListener("message", (e)=> {
+								console.log("tutor frame got message", e.data);
+								if (e.data.command === "tutorready") {
+									window.__problemUrls.__current++;
+									let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
+									tutor.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
+									
+									window.postMessage(e.data, "*");
+								}
+							});
+						}
 					}
 					tutorFrame.src = msg.data;
 				break;
