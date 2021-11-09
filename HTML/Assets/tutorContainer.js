@@ -50,6 +50,27 @@
 		checkLoaded();
 	}
 	
+	function tutorFrameReady(e) {
+		console.log("tutorFrame DOMContentLoaded event");
+		tutorFrame.contentWindow.addEventListener("message", (e)=> {
+			console.log("tutor frame got message", e.data);
+			if (e.data.command === "tutorready") {
+				window.__problemUrls.__current++;
+				let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
+				tutor.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
+				tutor.CTATCommShell.addGlobalEventListener({
+					processCommShellEvent: function(e, msg) {
+						console.log("processCommShellEvent: ",e);
+						if (e === "CorrectAction" && msg.getSAI().getSelection() === "done") {
+							window.postMessage({command: "problem_over"});
+						}
+					}
+				});
+				window.postMessage(e.data, "*");
+			}
+		});
+	}
+	
 	var bc = new BroadcastChannel('student_transactions');
 	var tutorFrame = document.getElementById('tutor_frame');
 	const urlParams = new URLSearchParams(window.location.search);
@@ -65,19 +86,7 @@
 				break;
 				case 'load':
 					
-					iFrameReady(tutorFrame, function(e) {
-						console.log("tutorFrame DOMContentLoaded event");
-						tutorFrame.contentWindow.addEventListener("message", (e)=> {
-							console.log("tutor frame got message", e.data);
-							if (e.data.command === "tutorready") {
-								window.__problemUrls.__current++;
-								let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
-								tutor.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
-								
-								window.postMessage(e.data, "*");
-							}
-						});
-					});
+					iFrameReady(tutorFrame, tutorFrameReady);
 					
 					tutorFrame.src = msg.data;
 				break;
@@ -103,10 +112,16 @@
 	window.addEventListener("message", (e)=> {
 		var msg = e.data;
 		console.log("got message ",msg);
-		if (msg.command === "tutorready") {
-			console.log("tutor ready msg");
-			bc.postMessage({sender: myId, type: "send steps", data: window.__problemUrls.__current});
-		}
+		switch(msg.command) {
+			case "tutorready":
+				console.log("tutor ready msg");
+				bc.postMessage({sender: myId, type: "send steps", data: window.__problemUrls.__current});
+				break;
+			case "problem_over":
+				console.log("problem done msg");
+				iFrameReady(tutorFrame, tutorFrameReady);
+				break;
+		}  
 	});
 	
 	bc.postMessage({sender:	myId, type: 'get urls'});
