@@ -86,11 +86,11 @@
 				interfaceFrame.addEventListener("noolsModelLoaded", ()=> {
 					
 					console.log("noolsModelLoaded event sending ready msg");
-					sendReadyMsg();
+					sendReadyMsg(interfaceFrame);
 				});
 			} else {
 				console.log("scrim already down, sending ready msg");
-				sendReadyMsg();
+				sendReadyMsg(interfaceFrame);
 			}
 		} else {
 			console.log("interface frame not exist yet, polling...");
