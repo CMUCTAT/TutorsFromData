@@ -64,27 +64,36 @@
 		checkLoaded();
 	}
 	
+	function sendReadyMsg(interfaceFrame) {
+		window.__problemUrls.__current++;
+		interfaceFrame.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
+		interfaceFrame.CTATCommShell.commShell.addGlobalEventListener({
+			processCommShellEvent: function(e, msg) {
+				console.log("processCommShellEvent: ",e);
+				if (e === "CorrectAction" && msg.getSAI().getSelection() === "done") {
+					window.postMessage({command: "problem_over"});
+				}
+			}
+		});
+		window.postMessage({command: "tutorready"}, "*");
+	}
+	
 	function addNMLEvent(tFrame) {
 		let interfaceFrame = tutorFrame.contentWindow.document.getElementById("interface");
 		if (interfaceFrame) {
 			interfaceFrame = interfaceFrame.contentWindow;
-			interfaceFrame.addEventListener("noolsModelLoaded", ()=> {
-				
-				console.log("noolsModelLoaded event");
-				
-				window.__problemUrls.__current++;
-				interfaceFrame.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
-				interfaceFrame.CTATCommShell.commShell.addGlobalEventListener({
-					processCommShellEvent: function(e, msg) {
-						console.log("processCommShellEvent: ",e);
-						if (e === "CorrectAction" && msg.getSAI().getSelection() === "done") {
-							window.postMessage({command: "problem_over"});
-						}
-					}
+			if (interfaceFrame.document.getElementById("scrim")) {
+				interfaceFrame.addEventListener("noolsModelLoaded", ()=> {
+					
+					console.log("noolsModelLoaded event sending ready msg");
+					sendReadyMsg();
 				});
-				window.postMessage({command: "tutorready"}, "*");
-			});
+			} else {
+				console.log("scrim already down, sending ready msg");
+				sendReadyMsg();
+			}
 		} else {
+			console.log("interface frame not exist yet, polling...");
 			setTimeout(addNMLEvent.bind(this, tFrame), 1);
 		}
 	}
