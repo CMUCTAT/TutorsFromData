@@ -64,15 +64,17 @@
 		checkLoaded();
 	}
 	
-	function tutorFrameReady(e) {
-		console.log("tutorFrame DOMContentLoaded event");
-		tutorFrame.contentWindow.addEventListener("message", (e)=> {
-			console.log("tutor frame got message", e.data);
-			if (e.data.command === "tutorready") {
+	function addNMLEvent(tFrame) {
+		let interfaceFrame = tutorFrame.contentWindow.document.getElementById("interface");
+		if (interfaceFrame) {
+			interfaceFrame = interfaceFrame.contentWindow;
+			interfaceFrame.addEventListener("noolsModelLoaded", ()=> {
+				
+				console.log("noolsModelLoaded event");
+				
 				window.__problemUrls.__current++;
-				let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
-				tutor.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
-				tutor.CTATCommShell.commShell.addGlobalEventListener({
+				interfaceFrame.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
+				interfaceFrame.CTATCommShell.commShell.addGlobalEventListener({
 					processCommShellEvent: function(e, msg) {
 						console.log("processCommShellEvent: ",e);
 						if (e === "CorrectAction" && msg.getSAI().getSelection() === "done") {
@@ -80,9 +82,11 @@
 						}
 					}
 				});
-				window.postMessage(e.data, "*");
-			}
-		});
+				window.postMessage({command: "tutorready"}, "*");
+			});
+		} else {
+			setTimeout(addNMLEvent.bind(this, tFrame), 1);
+		}
 	}
 	
 	var bc = new BroadcastChannel('student_transactions');
@@ -100,25 +104,10 @@
 				break;
 				case 'load':
 					
-					//iFrameReady(tutorFrame, tutorFrameReady);
 					tutorFrame.onload = function() {
-						let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
-						tutor.addEventListener("noolsModelLoaded", ()=> {
-							
-							console.log("noolsModelLoaded event");
-							
-							window.__problemUrls.__current++;
-							tutor.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
-							tutor.CTATCommShell.commShell.addGlobalEventListener({
-								processCommShellEvent: function(e, msg) {
-									console.log("processCommShellEvent: ",e);
-									if (e === "CorrectAction" && msg.getSAI().getSelection() === "done") {
-										window.postMessage({command: "problem_over"});
-									}
-								}
-							});
-							window.postMessage({command: "tutorready"}, "*");
-						});
+						
+						console.log("tutorFrame onload");
+						addNMLEvent(tutorFrame);
 					};
 					
 					
@@ -153,7 +142,6 @@
 				break;
 			case "problem_over":
 				console.log("problem done msg");
-		//		iFrameReady(tutorFrame, tutorFrameReady);
 				break;
 		}  
 	});
