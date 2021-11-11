@@ -147,6 +147,19 @@
 		switch(msg.command) {
 			case "tutorready":
 				console.log("tutor ready msg");
+				
+				let interfaceFrame = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
+				window.__problemUrls.__current++;
+				interfaceFrame.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
+				interfaceFrame.CTATCommShell.commShell.addGlobalEventListener({
+					processCommShellEvent: function(e, msg) {
+						console.log("processCommShellEvent: ",e);
+						if (e === "CorrectAction" && msg.getSAI().getSelection() === "done") {
+							window.postMessage({command: "problem_over"});
+						}
+					}
+				});
+				
 				bc.postMessage({sender: myId, type: "send steps", data: window.__problemUrls.__current});
 				break;
 			case "problem_over":
