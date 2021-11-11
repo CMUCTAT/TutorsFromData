@@ -116,7 +116,7 @@
 					tutorFrame.onload = function() {
 						
 						console.log("tutorFrame onload");
-						addNMLEvent(tutorFrame);
+					//	addNMLEvent(tutorFrame);
 					};
 					
 					
