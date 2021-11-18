@@ -87,27 +87,30 @@ function getInterface() {
 	return interfaceFilePath;
 }
 
-function genReplayUrl(problemData) {
-	let host = window.location.origin;
-	let path = "/run_replay_problem_set_as_assignment/"+problemData.packageName+"/"+problemData.problemSet+"/"+problemData.problemName;
-	if (!isNaN(parseInt(problemData.context, 10))) {
-		path += '/'+problemData.context;
-	}
-	let query = "?school_name="+problemData.school+"&class_name="+problemData.class+"&assignment_name="+problemData.assignment+"&student_name="+problemData.studentName+"&reset=true&first=true";
-	let url = host+path+query,
-		urlEncoded = encodeURI(url);
-
-	return urlEncoded;
-}
-
 const TabManager = (function() {
 	var tabMap = {};
+	
+	var genReplayUrl = function(problemData, reset, first) {
+		let host = window.location.origin;
+		let path = "/run_replay_problem_set_as_assignment/"+problemData.packageName+"/"+problemData.problemSet+"/"+problemData.problemName;
+		if (!isNaN(parseInt(problemData.context, 10))) {
+			path += '/'+problemData.context;
+		}
+		let query = "?school_name="+problemData.school+"&class_name="+problemData.class+"&assignment_name="+problemData.assignment+"&student_name="+problemData.studentName+"&reset="+reset+"&first="+first;
+		let url = host+path+query,
+			urlEncoded = encodeURI(url);
+
+		tabMap[problemData.studentName].generatedURLsForProblemSets[problemData.problemSet] = true;
+
+		return urlEncoded;
+	}
 	
 	var tm = {
 		addTab: function(tabId, studentName) {
 			tabMap[tabId] = {
 				student: studentName,
-				probIdx: -1
+				probIdx: -1,
+				generatedURLsForProblemSets: {}
 			}
 		},
 		
@@ -125,9 +128,9 @@ const TabManager = (function() {
 		
 		sendProblemUrls: function(tabId) {
 			var studentProblems = studentTransactions[tabMap[tabId].student];
-			var urls = studentProblems.__problemOrder.map((pNameAndIndex) => {
+			var urls = studentProblems.__problemOrder.map((pNameAndIndex, i) => {
 				let pData = studentProblems[pNameAndIndex.name][pNameAndIndex.idx];
-				return genReplayUrl(pData);
+				return genReplayUrl(pData, i === 0, !tabMap[tabId].generatedURLsForProblemSets[pData.problemSet]);
 			});
 			
 			bc.postMessage({to: tabId, type: 'problem_urls', data: urls});
@@ -145,16 +148,9 @@ const TabManager = (function() {
 			console.log("problem data: ",pData);
 			
 			if (pData) {
-				let host = window.location.origin;
-				let path = "/run_replay_problem_set_as_assignment/"+pData.packageName+"/"+pData.problemSet+"/"+pName;
-				if (!isNaN(parseInt(pData.context, 10))) {
-					path += '/'+pData.context;
-				}
-				let query = "?school_name="+pData.school+"&class_name="+pData.class+"&assignment_name="+pData.assignment+"&student_name="+tabData.student+"&reset=true&first=true";
-				let url = host+path+query,
-					urlEncoded = encodeURI(url);
-				console.log("problem URL (raw): ",url);
-				console.log("(encoded): ",urlEncoded);
+				let urlEncoded = genReplayUrl(pData, true, true);
+				
+				console.log("problem URL : ",urlEncoded);
 				bc.postMessage({to: tabId, type: 'load', data: urlEncoded});
 			}
 		},
