@@ -145,7 +145,7 @@
 								"bubbles": true,
 								"cancelable": false
 							});
-							let btn = tutor.document.getElementById(msg.data.selection);
+							let btn = tutor.document.querySelector('.CTATHintWindow--'+(msg.data.selection === "nextButton" ? "next" : "previous"));
 							btn.dispatchEvent(clickEvent);
 						}
 					/*	
