@@ -138,7 +138,8 @@
 																	msg.data.transactionID //transaction id
 																	);
 					} else {
-						let interfaceMsg = tutor.ProblemStateSaver.jsonToXML({o: "H", m: "I", s: msg.data.selection, a: msg.data.action, i: msg.data.input});
+						let interfaceMsg = tutor.ProblemStateSaver.jsonToXML([{o: "H", m: "I", s: msg.data.selection, a: msg.data.action, i: msg.data.input}]);
+						interfaceMsg = interfaceMsg[0].msg;
 						console.log("reserved selection, calling sendToInterface, msg:");
 						console.log(interfaceMsg);
 						tutor.CTAT.ToolTutor.sendToInterface(interfaceMsg);
