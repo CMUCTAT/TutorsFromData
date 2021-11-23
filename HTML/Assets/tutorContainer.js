@@ -123,19 +123,24 @@
 					tutorFrame.src = msg.data;
 				break;
 				case 'step': 
-					let tutor = tutorFrame.contentWindow.document.getElementById("interface");
-					let ctatSAI = new tutor.contentWindow.CTATSAI(msg.data.selection, msg.data.action, msg.data.input),
-					stepType = "ATTEMPT";
-					console.log("\tsend sai: "+msg.data.selection+","+msg.data.action+","+msg.data.input+", ("+(msg.data.tutored ? "" : "un")+"tutored)");
-					tutor.contentWindow.CTATCommShell.commShell.processComponentAction(
-																ctatSAI, //sai
-																msg.data.tutored, //tutored
-																true, //behavior recorded
-																null,  //[deprecated]
-																stepType, //log type
-																null, //aTrigger
-																msg.data.transactionID //transaction id
-																);
+					let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
+					if (!tutor.CTATShellTools.getReservedSelection(msg.data.selection)) {
+						let ctatSAI = new tutor.CTATSAI(msg.data.selection, msg.data.action, msg.data.input),
+						stepType = "ATTEMPT";
+						console.log("\tsend sai: "+msg.data.selection+","+msg.data.action+","+msg.data.input+", ("+(msg.data.tutored ? "" : "un")+"tutored)");
+						tutor.CTATCommShell.commShell.processComponentAction(
+																	ctatSAI, //sai
+																	msg.data.tutored, //tutored
+																	true, //behavior recorded
+																	null,  //[deprecated]
+																	stepType, //log type
+																	null, //aTrigger
+																	msg.data.transactionID //transaction id
+																	);
+					} else {
+						let msg = tutor.ProblemStateSaver.jsonToXML({o: "H", m: "I", s: msg.data.selection, a: msg.data.action, i: msg.data.input});
+						tutor.CTAT.ToolTutor.sendToInterface(msg);
+					}
 				break;
 			}
 		}

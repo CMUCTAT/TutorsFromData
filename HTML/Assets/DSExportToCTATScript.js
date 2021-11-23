@@ -59,14 +59,14 @@ var __util = (function() {
 	} catch(e) {
 		queryParams = {};
 	}
-
-	var tsRegex = /\.(\d{1,3})\sUTC$/; 
+	var tsRegex = /^(\d{4})-(\d{2})-(\d{2})\s(\d{1,2}):(\d{1,2}):(\d{1,2})\.(\d{1,3})\sUTC$/; 
 	return {
 		getQueryParam: function(k) {
 			return queryParams[k];
 		},
 
 		formatToolTime: function(ts) {
+		/*
 			let formatted = ts.replace(tsRegex, (m, g1)=> {
 				let padN = 3-g1.length;
 				for (let i = 0; i < padN; i++) {
@@ -74,6 +74,15 @@ var __util = (function() {
 				}
 				return "."+g1+" UTC";
 			});
+		*/
+			let res = tsRegex.exec(ts),
+				year = parseInt(res[1]), month = parseInt(res[2]),
+				day = parseInt(res[3]), hour = parseInt(res[4]),
+				minute = parseInt(res[5]), second = parseInt(res[6]),
+				ms = parseInt(res[7]);
+			let formatted = new Date(year, month-1, day, hour, minute, second, ms);
+			console.log("formatToolTime turned",ts,"into",formatted);
+			console.log("year",year,"month",month,"day",day,"hour",hour,"minute",minute,"second",second,"ms",ms);
 			return formatted;
 		}
 	};
@@ -177,7 +186,7 @@ const TabManager = (function() {
 			
 			this.sendStep(tabId, step);
 			if (nextStep) {
-				let delay = new Date(nextStep.timestamp) - new Date(step.timestamp);
+				let delay = nextStep.timestamp - step.timestamp;
 				delay = delay > MAX_STEP_DELAY ? MAX_STEP_DELAY : delay;
 				console.log("sendNextStep, this idx is ",stepIdx," setting delay = ",delay);
 				setTimeout(this.sendNextStep.bind(this, tabId, nextStepIdx), delay); 
@@ -1171,7 +1180,7 @@ function buildStepDisplay() {
 					c = c || "N/A";
 				}
 				let td = document.createElement("td");
-				td.innerHTML = c;
+				td.innerHTML = c.toString();
 				tr.appendChild(td);
 			});
 		});
@@ -1251,7 +1260,7 @@ function openTabForStudent(student) {
 
 function sortTransactionList(tList) {
 	tList.sort((sai1, sai2) => {
-		return sai1.timestamp.localeCompare(sai2.timestamp);
+		return sai1.timestamp - sai2.timestamp;
 	});
 }
 
@@ -1276,7 +1285,7 @@ function sortReplayEnactmentData() {
 			});
 		}
 		pOrder.sort((probA, probB) => {
-			return thisStudent[probA.name][probA.idx].transactions[0].timestamp.localeCompare(thisStudent[probB.name][probB.idx].transactions[0].timestamp);
+			return thisStudent[probA.name][probA.idx].transactions[0].timestamp - thisStudent[probB.name][probB.idx].transactions[0].timestamp;
 		});
 		thisStudent.__problemOrder = pOrder;
 	}
