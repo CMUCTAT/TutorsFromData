@@ -139,6 +139,8 @@
 																	);
 					} else {
 						let msg = tutor.ProblemStateSaver.jsonToXML({o: "H", m: "I", s: msg.data.selection, a: msg.data.action, i: msg.data.input});
+						console.log("reserved selection, calling sendToInterface, msg:");
+						console.log(msg);
 						tutor.CTAT.ToolTutor.sendToInterface(msg);
 					}
 				break;
