@@ -124,9 +124,9 @@
 				break;
 				case 'step': 
 					let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
-					let ctatSAI = new tutor.CTATSAI(msg.data.selection, msg.data.action, msg.data.input),
+					let ctatSAI = new tutor.CTATSAI(msg.data.selection, msg.data.action, msg.data.input);
 					if (!tutor.CTATShellTools.getReservedSelection(ctatSAI)) {
-						stepType = "ATTEMPT";
+						let stepType = "ATTEMPT";
 						console.log("\tsend sai: "+msg.data.selection+","+msg.data.action+","+msg.data.input+", ("+(msg.data.tutored ? "" : "un")+"tutored)");
 						tutor.CTATCommShell.commShell.processComponentAction(
 																	ctatSAI, //sai
