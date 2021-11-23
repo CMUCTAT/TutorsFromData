@@ -138,11 +138,22 @@
 																	msg.data.transactionID //transaction id
 																	);
 					} else {
+						console.log("reserved selection, sending click event...");
+						if (msg.data.selection === "nextButton" || msg.data.selection === "previousButton") {
+							var clickEvent = new MouseEvent("click", {
+								"view": tutor,
+								"bubbles": true,
+								"cancelable": false
+							});
+							let btn = tutor.document.getElementById(msg.data.selection);
+							btn.dispatchEvent(clickEvent);
+						}
+					/*	
 						let interfaceMsg = tutor.ProblemStateSaver.jsonToXML([{o: "H", m: "I", s: msg.data.selection, a: msg.data.action, i: msg.data.input}]);
 						interfaceMsg = interfaceMsg[0].msg;
-						console.log("reserved selection, calling sendToInterface, msg:");
 						console.log(interfaceMsg);
 						tutor.CTAT.ToolTutor.sendToInterface(interfaceMsg);
+					*/
 					}
 				break;
 			}
