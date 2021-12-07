@@ -89,6 +89,7 @@ var __util = (function() {
 })();
 
 const MAX_STEP_DELAY = parseInt(__util.getQueryParam("max_step_delay"), 10) * 1000 || Number.POSITIVE_INFINITY;
+const RESET_ON = __util.getQueryParam("reset_on") || "assignment";
 
 function getInterface() {
     interfaceFilePath = (__util.getQueryParam("interfaceFilePath") || document.getElementById('fileItem2').files[0].name);
@@ -109,7 +110,7 @@ const TabManager = (function() {
 		let url = host+path+query,
 			urlEncoded = encodeURI(url);
 
-		tabMap[problemData.studentName].generatedURLsForProblemSets[problemData.problemSet] = true;
+		tabMap[problemData.studentName].generatedURLsForProblemSets[problemData[RESET_ON]] = true;
 
 		return urlEncoded;
 	}
@@ -139,7 +140,7 @@ const TabManager = (function() {
 			var studentProblems = studentTransactions[tabMap[tabId].student];
 			var urls = studentProblems.__problemOrder.map((pNameAndIndex, i) => {
 				let pData = studentProblems[pNameAndIndex.name][pNameAndIndex.idx];
-				return genReplayUrl(pData, i === 0, !tabMap[tabId].generatedURLsForProblemSets[pData.problemSet]);
+				return genReplayUrl(pData, i === 0, !tabMap[tabId].generatedURLsForProblemSets[pData[RESET_ON]]);
 			});
 			
 			bc.postMessage({to: tabId, type: 'problem_urls', data: urls});
