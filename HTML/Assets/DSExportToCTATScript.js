@@ -116,12 +116,15 @@ const TabManager = (function() {
 	}
 	
 	var tm = {
-		addTab: function(tabId, studentName) {
-			tabMap[tabId] = {
+		addTab: function(studentName) {
+			var studentProblems = studentTransactions[studentName];
+			tabMap[studentName] = {
 				student: studentName,
+				problems: studentProblems,
 				probIdx: -1,
 				generatedURLsForProblemSets: {}
 			}
+			window.open(tm.getNextProblemUrl(studentName));
 		},
 		
 		setProbIndex: function(tabId, probIdx) {
@@ -130,20 +133,29 @@ const TabManager = (function() {
 		
 		getCurrentProbData: function(tabId) {
 			var tabData = tabMap[tabId];
-			var studentProblems = studentTransactions[tabData.student];
+			var studentProblems = tabData.problems;
 			var pNameAndIndex = studentProblems.__problemOrder[tabData.probIdx];
 			var probData = studentProblems[pNameAndIndex.name][pNameAndIndex.idx];
 			return probData;
 		},
 		
-		sendProblemUrls: function(tabId) {
-			var studentProblems = studentTransactions[tabMap[tabId].student];
+		getProblemUrls: function(tabId) {
+			var studentProblems = tabMap[tabId].problems;
 			var urls = studentProblems.__problemOrder.map((pNameAndIndex, i) => {
 				let pData = studentProblems[pNameAndIndex.name][pNameAndIndex.idx];
 				return genReplayUrl(pData, i === 0, !tabMap[tabId].generatedURLsForProblemSets[pData[RESET_ON]]);
 			});
 			
-			bc.postMessage({to: tabId, type: 'problem_urls', data: urls});
+			return urls;
+		},
+		
+		getNextProblemUrl: function(tabId) {
+			var tabData = tabMap[tabId],
+				nextProblem = tabData.problems.__problemOrder[++tabData.probIdx],
+				nextProblemData = tabMap[tabId].problems[nextProblem.name][nextProblem.idx],
+				nextProblemUrl = genReplayUrl(nextProblemData, tabData.probIdx === 0, !tabData.generatedURLsForProblemSets[nextProblemData[RESET_ON]]);
+			
+			return nextProblemUrl;
 		},
 		
 		loadNextProblem: function(tabId) {
@@ -167,7 +179,8 @@ const TabManager = (function() {
 		
 		runProblem: function(tabId, probIdx) {
 			var tabData = tabMap[tabId];
-			var studentProblems = studentTransactions[tabData.student];
+			probIdx = !isNaN(parseInt(probIdx, 10)) ? probIdx : tabData.probIdx;
+			var studentProblems = tabData.problems;
 			var pNameAndIndex = studentProblems.__problemOrder[probIdx];
 			var probData = studentProblems[pNameAndIndex.name][pNameAndIndex.idx];
 			
@@ -212,7 +225,12 @@ const TabManager = (function() {
 				tm.runProblem(msg.sender, msg.data);
 			break;
 			case "get urls":
-				tm.sendProblemUrls(msg.sender);
+				let urls = tm.getProblemUrls(msg.sender);
+				bc.postMessage({to: msg.sender, type: 'problem_urls', data: urls});
+			break;
+			case "get next url":
+				let nextProblemUrl = tm.getNextProblemUrl(msg.sender);
+				bc.postMessage({to: msg.sender, type: 'next_problem_url', data: nextProblemUrl});
 			break;
 		}
 	}
@@ -1248,7 +1266,7 @@ function buildUI() {
 function replaySelectedStudents() {
 	let selected = Array.prototype.filter.call(document.getElementById("studentSelectForm").querySelectorAll("input[type='checkbox']"), (i)=>i.checked).map((i)=>i.value);
 	selected.forEach((s)=> {
-		openTabForStudent(s);
+		TabManager.addTab(student);
 	});
 }
 

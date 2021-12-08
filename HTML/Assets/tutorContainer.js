@@ -1,26 +1,19 @@
 (function() {
 	
-	var readyFired = {};
-	
 	var bc = new BroadcastChannel('student_transactions');
-	var tutorFrame = document.getElementById('tutor_frame');
 	const urlParams = new URLSearchParams(window.location.search);
-	const myId = urlParams.get('tab_id');
+	const myId = urlParams.get('student_name');
+	var tutor;
+	
 	bc.onmessage = function(msg) {
 		msg = msg.data;
 		if (msg.to === myId) {
 			switch(msg.type) {
-				case 'problem_urls':
-					window.__problemUrls = msg.data;
-					window.__problemUrls.__current = -1;
-					bc.postMessage({sender: myId, type: "next problem"});
-				break;
-				case 'load':
-					
-					tutorFrame.src = msg.data;
+				case 'next_problem_url':
+					tutor.CTATConfiguration.set("run_problem_url", msg.data);
+					bc.postMessage({sender: myId, type: "send steps"});
 				break;
 				case 'step': 
-					let tutor = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
 					let ctatSAI = new tutor.CTATSAI(msg.data.selection, msg.data.action, msg.data.input);
 					if (!tutor.CTATShellTools.getReservedSelection(ctatSAI)) {
 						let stepType = "ATTEMPT";
@@ -63,26 +56,14 @@
 		switch(msg.command) {
 			case "tutorready":
 				console.log("tutor ready msg");
-				
-				let interfaceFrame = tutorFrame.contentWindow.document.getElementById("interface").contentWindow;
-				window.__problemUrls.__current++;
-				interfaceFrame.CTATConfiguration.set("run_problem_url", window.__problemUrls[window.__problemUrls.__current+1]);
-				interfaceFrame.CTATCommShell.commShell.addGlobalEventListener({
-					processCommShellEvent: function(e, msg) {
-						console.log("processCommShellEvent: ",e);
-						if (e === "CorrectAction" && msg.getSAI().getSelection() === "done") {
-							window.postMessage({command: "problem_over"});
-						}
-					}
-				});
-				
-				bc.postMessage({sender: myId, type: "send steps", data: window.__problemUrls.__current});
+				tutor = document.getElementById("interface").contentWindow;
+				bc.postMessage({sender: myId, type: "get next url"});
 				break;
-			case "problem_over":
-				console.log("problem done msg");
-				break;
-		}  
+		}
 	});
 	
-	bc.postMessage({sender:	myId, type: 'get urls'});
+	document.addEventListener('freeze', ()=> {
+		console.log("freeze event handler");
+	});
+	
 })();
