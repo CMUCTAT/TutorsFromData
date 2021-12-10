@@ -229,7 +229,7 @@ const TabManager = (function() {
 				bc.postMessage({to: msg.sender, type: 'problem_urls', data: urls});
 			break;
 			case "get next url":
-				tabData[msg.sender].probIdx++;
+				tabMap[msg.sender].probIdx++;
 				let nextProblemUrl = tm.getNextProblemUrl(msg.sender);
 				bc.postMessage({to: msg.sender, type: 'next_problem_url', data: nextProblemUrl});
 			break;
