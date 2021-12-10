@@ -151,7 +151,7 @@ const TabManager = (function() {
 		
 		getNextProblemUrl: function(tabId) {
 			var tabData = tabMap[tabId],
-				nextProblem = tabData.problems.__problemOrder[++tabData.probIdx],
+				nextProblem = tabData.problems.__problemOrder[tabData.probIdx+1],
 				nextProblemData = tabMap[tabId].problems[nextProblem.name][nextProblem.idx],
 				nextProblemUrl = genReplayUrl(nextProblemData, tabData.probIdx === 0, !tabData.generatedURLsForProblemSets[nextProblemData[RESET_ON]]);
 			
@@ -229,6 +229,7 @@ const TabManager = (function() {
 				bc.postMessage({to: msg.sender, type: 'problem_urls', data: urls});
 			break;
 			case "get next url":
+				tabData[msg.sender].probIdx++;
 				let nextProblemUrl = tm.getNextProblemUrl(msg.sender);
 				bc.postMessage({to: msg.sender, type: 'next_problem_url', data: nextProblemUrl});
 			break;
