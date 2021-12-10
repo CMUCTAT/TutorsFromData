@@ -1266,7 +1266,7 @@ function buildUI() {
 function replaySelectedStudents() {
 	let selected = Array.prototype.filter.call(document.getElementById("studentSelectForm").querySelectorAll("input[type='checkbox']"), (i)=>i.checked).map((i)=>i.value);
 	selected.forEach((s)=> {
-		TabManager.addTab(student);
+		TabManager.addTab(s);
 	});
 }
 
