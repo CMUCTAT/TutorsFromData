@@ -444,7 +444,7 @@ function openTutorInNewWindow(onloadFunc, isLocal) {
 		url+=query;
 	}
 	if (url) {
-		ui=window.open(iPath+queryStr);
+		ui=window.open(url);
 		if (onloadFunc) {
 			ui.window.onload = onloadFunc;
 		}
