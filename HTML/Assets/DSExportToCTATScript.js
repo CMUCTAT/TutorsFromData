@@ -440,7 +440,7 @@ function openTutorInNewWindow(onloadFunc, isLocal) {
 			student = Array.prototype.find.call(document.getElementById("studentChoicesForm").querySelectorAll("input[type=radio]"), (r)=>r.checked).value,
 			problemData = studentTransactions[student][problem];
 		url = window.location.origin+"/run_replay_problem_set_as_assignment/"+problemData.packageName+"/"+problemData.problemSet+"/"+problemData.problemName;
-		let query = "?school_name="+problemData.school+"&class_name="+problemData.class+"&assignment_name="+problemData.assignment+"&student_name="+problemData.studentName+"&reset="+reset+"&first="+first;
+		let query = "?school_name="+problemData.school+"&class_name="+problemData.class+"&assignment_name="+problemData.assignment+"&student_name="+problemData.studentName+"&reset=false&first=false";
 		url+=query;
 	}
 	if (url) {
