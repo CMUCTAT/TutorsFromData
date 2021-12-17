@@ -444,6 +444,9 @@ function openTutorInNewWindow(onloadFunc, isLocal) {
 		url+=query;
 	}
 	if (url) {
+		console.log("launching url (raw): ",url);
+		url = encodeURI(url);
+		console.log("\t(encoded): ",url);
 		ui=window.open(url);
 		if (onloadFunc) {
 			ui.window.onload = onloadFunc;
