@@ -241,7 +241,7 @@ const TabManager = (function() {
 			this.initialized = true;
 		},
 		
-		initialized: false;
+		initialized: false
 	};
 	
 	return tm;
