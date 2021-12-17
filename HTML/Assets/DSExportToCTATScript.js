@@ -438,15 +438,17 @@ function openTutorInNewWindow(onloadFunc, isLocal) {
 	} else {
 		let problem = Array.prototype.find.call(document.getElementById("problemChoicesForm").querySelectorAll("input[type=radio]"), (r)=>r.checked).value,
 			student = Array.prototype.find.call(document.getElementById("studentChoicesForm").querySelectorAll("input[type=radio]"), (r)=>r.checked).value,
-			problemData = studentTransactions[student][problem];
+			problemData = studentTransactions[student][problem][0];
+		console.log("launching tab via tutorshop");
+		console.log("\tgot problem data: ",problemData);
 		url = window.location.origin+"/run_replay_problem_set_as_assignment/"+problemData.packageName+"/"+problemData.problemSet+"/"+problemData.problemName;
 		let query = "?school_name="+problemData.school+"&class_name="+problemData.class+"&assignment_name="+problemData.assignment+"&student_name="+problemData.studentName+"&reset=false&first=false";
 		url+=query;
+		console.log("\t url (raw): ",url);
+		url = encodeURI(url);
+		console.log("\t url (encoded): ",url);
 	}
 	if (url) {
-		console.log("launching url (raw): ",url);
-		url = encodeURI(url);
-		console.log("\t(encoded): ",url);
 		ui=window.open(url);
 		if (onloadFunc) {
 			ui.window.onload = onloadFunc;
