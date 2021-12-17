@@ -99,6 +99,7 @@ function getInterface() {
 
 const TabManager = (function() {
 	var tabMap = {};
+	var bc;
 	
 	var genReplayUrl = function(problemData, reset, first) {
 		let host = window.location.origin;
@@ -212,31 +213,36 @@ const TabManager = (function() {
 		sendStep: function(tabId, step) {
 			console.log("send step ",step);
 			bc.postMessage({to: tabId, type: 'step', data: step});
-		}
+		},
+		
+		init: function() {
+			bc = new BroadcastChannel('student_transactions');
+			bc.onmessage = function(msg) {
+				msg = msg.data;
+				console.log(`got message ${msg.type} ${msg.data} from ${msg.sender}`);
+				switch(msg.type) {
+					case "next problem" :
+						tm.loadNextProblem(msg.sender);
+					break;
+					case "send steps":
+						tm.runProblem(msg.sender, msg.data);
+					break;
+					case "get urls":
+						let urls = tm.getProblemUrls(msg.sender);
+						bc.postMessage({to: msg.sender, type: 'problem_urls', data: urls});
+					break;
+					case "get next url":
+						tabMap[msg.sender].probIdx++;
+						let nextProblemUrl = tm.getNextProblemUrl(msg.sender);
+						bc.postMessage({to: msg.sender, type: 'next_problem_url', data: nextProblemUrl});
+					break;
+				}
+			}
+			this.initialized = true;
+		},
+		
+		initialized: false;
 	};
-	
-	var bc = new BroadcastChannel('student_transactions');
-	bc.onmessage = function(msg) {
-		msg = msg.data;
-		console.log(`got message ${msg.type} ${msg.data} from ${msg.sender}`);
-		switch(msg.type) {
-			case "next problem" :
-				tm.loadNextProblem(msg.sender);
-			break;
-			case "send steps":
-				tm.runProblem(msg.sender, msg.data);
-			break;
-			case "get urls":
-				let urls = tm.getProblemUrls(msg.sender);
-				bc.postMessage({to: msg.sender, type: 'problem_urls', data: urls});
-			break;
-			case "get next url":
-				tabMap[msg.sender].probIdx++;
-				let nextProblemUrl = tm.getNextProblemUrl(msg.sender);
-				bc.postMessage({to: msg.sender, type: 'next_problem_url', data: nextProblemUrl});
-			break;
-		}
-	}
 	
 	return tm;
 })();
@@ -1294,6 +1300,9 @@ function buildUI() {
 }
 
 function replaySelectedStudents() {
+	if (!TabManager.initialized) {
+		TabManager.init();
+	}
 	let selected = Array.prototype.filter.call(document.getElementById("studentSelectForm").querySelectorAll("input[type='checkbox']"), (i)=>i.checked).map((i)=>i.value);
 	selected.forEach((s)=> {
 		TabManager.addTab(s);
