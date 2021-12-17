@@ -46,6 +46,9 @@
 					*/
 					}
 				break;
+				case 'end of steps': 
+					window.alert("There are no more steps for this student");
+				break;
 			}
 		}
 	}

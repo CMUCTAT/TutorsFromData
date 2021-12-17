@@ -204,6 +204,8 @@ const TabManager = (function() {
 				delay = delay > MAX_STEP_DELAY ? MAX_STEP_DELAY : delay;
 				console.log("sendNextStep, this idx is ",stepIdx," setting delay = ",delay);
 				setTimeout(this.sendNextStep.bind(this, tabId, nextStepIdx), delay); 
+			} else {
+				bc.postMessage({to: tabId, type: 'end of steps'});
 			}
 		},
 		
@@ -245,7 +247,10 @@ function StepReplayer() {
 	var uiWindow = null;
 	var stepTable = null;
 	var highlightedRowN = 0;
-
+	var isLocal = false;
+	var bc = new BroadcastChannel("student_transactions");
+	var studentId = null;
+	
 	function highlightNextStep() {
 		var tBody = stepTable.querySelector("tbody"),
 			rowToHighlight = tBody.childNodes[atStep],
@@ -256,13 +261,15 @@ function StepReplayer() {
 		highlightedRowN = atStep;
 	};
 
-	this.setSteps = function(stepList) {
+	this.setSteps = function(stepList, sId) {
 		atStep = 0;
 		steps = stepList;
+		studentId = sId;
 	}
 
-	this.setUiWindow = function(win) {
+	this.setUiWindow = function(win, isLocal) {
 		uiWindow = win;
+		isLocal = !!isLocal;
 	}
 
 	this.setStepTable = function(t) {
@@ -272,26 +279,30 @@ function StepReplayer() {
 
 	this.sendNextStep = function() {
 		let sai = steps[atStep];
-		if (sai.input === "hint request") {
-			if (sai.selection === "hint") {
-				uiWindow.CTATCommShell.commShell.requestHint();
-				console.log("\trequest hint");
+		if (isLocal) {
+			if (sai.input === "hint request") {
+				if (sai.selection === "hint") {
+					uiWindow.CTATCommShell.commShell.requestHint();
+					console.log("\trequest hint");
+				} else {
+					console.log("\tprevious/next button press, skip...");
+				}
 			} else {
-				console.log("\tprevious/next button press, skip...");
+				let ctatSAI = new CTATSAI(sai.selection, sai.action, sai.input),
+					stepType = "ATTEMPT";
+				console.log("\tsend sai: "+sai.selection+","+sai.action+","+sai.input+", ("+(sai.tutored ? "" : "un")+"tutored)");
+				uiWindow.CTATCommShell.commShell.processComponentAction(
+																ctatSAI, //sai
+																sai.tutored, //tutored
+																true, //behavior recorded
+																null,  //[deprecated]
+																stepType, //log type
+																null, //aTrigger
+																sai.transactionID //transaction id
+																);
 			}
 		} else {
-			let ctatSAI = new CTATSAI(sai.selection, sai.action, sai.input),
-				stepType = "ATTEMPT";
-			console.log("\tsend sai: "+sai.selection+","+sai.action+","+sai.input+", ("+(sai.tutored ? "" : "un")+"tutored)");
-			uiWindow.CTATCommShell.commShell.processComponentAction(
-															ctatSAI, //sai
-															sai.tutored, //tutored
-															true, //behavior recorded
-															null,  //[deprecated]
-															stepType, //log type
-															null, //aTrigger
-															sai.transactionID //transaction id
-															);
+			bc.postMessage({to: tabId, type: 'step', data: sai});
 		}
 		atStep++;
 		highlightNextStep();
@@ -400,34 +411,47 @@ function prevPath() {
     addPathXToInterface();
 }
 
-function openTutorInNewWindow(onloadFunc) {
+function openTutorInNewWindow(onloadFunc, isLocal) {
 	let iPath = document.getElementById("interfacePathInput").value || __util.getQueryParam("interfaceFilePath") || null,
 		qFile = document.getElementById("questionFileInput").value || __util.getQueryParam("question_file") || null,
 		doLogging = document.getElementById("doLoggingInput").checked,
 		datasetName = document.getElementById("logDatasetInput").value || null,
-		logServiceURL = "https://pslc-qa.andrew.cmu.edu/log/server";
+		logServiceURL = "https://pslc-qa.andrew.cmu.edu/log/server",
+		url;
 
-	if (iPath) {
-		if (qFile) {
-			let queryStr = "?replay_mode=true&question_file="+qFile;
-			if (doLogging && !datasetName) {
-				alert("specify the dataset name to be used for logging");
+	if (isLocal) {
+		if (iPath) {
+			if (qFile) {
+				let queryStr = "?replay_mode=true&question_file="+qFile;
+				if (doLogging && !datasetName) {
+					alert("specify the dataset name to be used for logging");
+				} else {
+					doLogging && (queryStr+="&Logging=ClientToLogServer&dataset_name="+datasetName+"&log_service_url="+logServiceURL);
+					url = iPath+queryStr;
+				}
 			} else {
-				doLogging && (queryStr+="&Logging=ClientToLogServer&dataset_name="+datasetName+"&log_service_url="+logServiceURL);
-				ui=window.open(iPath+queryStr);
-    			if (onloadFunc) {
-					ui.window.onload = onloadFunc;
-    			}
-				ui.window.onclose = (function() {
-    			    ui = null;
-    			}).bind(this);
-				__stepReplayer.setUiWindow(ui.window);
+				alert("specify the question file");
 			}
 		} else {
-			alert("specify the question file");
+			alert("specify the interface file");
 		}
 	} else {
-		alert("specify the interface file");
+		let problem = Array.prototype.find.call(document.getElementById("problemChoicesForm").querySelectorAll("input[type=radio]"), (r)=>r.checked).value,
+			student = Array.prototype.find.call(document.getElementById("studentChoicesForm").querySelectorAll("input[type=radio]"), (r)=>r.checked).value,
+			problemData = studentTransactions[student][problem];
+		url = window.location.origin+"/run_replay_problem_set_as_assignment/"+problemData.packageName+"/"+problemData.problemSet+"/"+problemData.problemName;
+		let query = "?school_name="+problemData.school+"&class_name="+problemData.class+"&assignment_name="+problemData.assignment+"&student_name="+problemData.studentName+"&reset="+reset+"&first="+first;
+		url+=query;
+	}
+	if (url) {
+		ui=window.open(iPath+queryStr);
+		if (onloadFunc) {
+			ui.window.onload = onloadFunc;
+		}
+		ui.window.onclose = (function() {
+			ui = null;
+		}).bind(this);
+		__stepReplayer.setUiWindow(ui.window, isLocal);
 	}
 }
 
@@ -1207,7 +1231,7 @@ function buildStepDisplay() {
 
 		stepTableLabel.innerHTML = "Steps ("+nSteps+")";
 		__stepReplayer = new StepReplayer();
-		__stepReplayer.setSteps(steps);
+		__stepReplayer.setSteps(steps, student);
 		__stepReplayer.setStepTable(stepContainer.querySelector("table"));
 	} else {
 		console.log("no stepDisplay element, skipping buildStepDisplay");
