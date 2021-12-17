@@ -308,7 +308,7 @@ function StepReplayer() {
 																);
 			}
 		} else {
-			bc.postMessage({to: tabId, type: 'step', data: sai});
+			bc.postMessage({to: studentId, type: 'step', data: sai});
 		}
 		atStep++;
 		highlightNextStep();
