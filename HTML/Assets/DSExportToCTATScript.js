@@ -450,6 +450,7 @@ function openTutorInNewWindow(onloadFunc, isLocal) {
 		console.log("launching tab via tutorshop");
 		console.log("\tgot problem data: ",problemData);
 		url = window.location.origin+"/run_replay_problem_set_as_assignment/"+problemData.packageName+"/"+problemData.problemSet+"/"+problemData.problemName;
+		let school = problemData.school || "Default School";
 		let query = "?school_name="+problemData.school+"&class_name="+problemData.class+"&assignment_name="+problemData.assignment+"&student_name="+problemData.studentName+"&reset=false&first=false";
 		url+=query;
 		console.log("\t url (raw): ",url);
