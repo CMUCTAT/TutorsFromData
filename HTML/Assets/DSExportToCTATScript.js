@@ -107,7 +107,8 @@ const TabManager = (function() {
 		if (!isNaN(parseInt(problemData.context, 10))) {
 			path += '/'+problemData.context;
 		}
-		let query = "?school_name="+problemData.school+"&class_name="+problemData.class+"&assignment_name="+problemData.assignment+"&student_name="+problemData.studentName+"&reset="+reset+"&first="+first;
+		let school = problemData.school ? problemData.school : "Default School";
+		let query = "?school_name="+school+"&class_name="+problemData.class+"&assignment_name="+problemData.assignment+"&student_name="+problemData.studentName+"&reset="+reset+"&first="+first;
 		let url = host+path+query,
 			urlEncoded = encodeURI(url);
 
