@@ -97,25 +97,24 @@ function getInterface() {
 	return interfaceFilePath;
 }
 
+function genReplayUrl(problemData, reset, first) {
+	let host = window.location.origin;
+	let path = "/run_replay_problem_set_as_assignment/"+problemData.packageName+"/"+problemData.problemSet+"/"+problemData.problemName;
+	if (!isNaN(parseInt(problemData.context, 10))) {
+		path += '/'+problemData.context;
+	}
+	let school = problemData.school || "Default School";
+	let classname = problemData.class || "Default Class";
+	let query = "?school_name="+school+"&class_name="+className+"&assignment_name="+problemData.assignment+"&student_name="+problemData.studentName+"&reset="+reset+"&first="+first;
+	let url = host+path+query,
+		urlEncoded = encodeURI(url);
+
+	return urlEncoded;
+}
+
 const TabManager = (function() {
 	var tabMap = {};
 	var bc;
-	
-	var genReplayUrl = function(problemData, reset, first) {
-		let host = window.location.origin;
-		let path = "/run_replay_problem_set_as_assignment/"+problemData.packageName+"/"+problemData.problemSet+"/"+problemData.problemName;
-		if (!isNaN(parseInt(problemData.context, 10))) {
-			path += '/'+problemData.context;
-		}
-		let school = problemData.school ? problemData.school : "Default School";
-		let query = "?school_name="+school+"&class_name="+problemData.class+"&assignment_name="+problemData.assignment+"&student_name="+problemData.studentName+"&reset="+reset+"&first="+first;
-		let url = host+path+query,
-			urlEncoded = encodeURI(url);
-
-		tabMap[problemData.studentName].generatedURLsForProblemSets[problemData[RESET_ON]] = true;
-
-		return urlEncoded;
-	}
 	
 	var tm = {
 		addTab: function(studentName) {
@@ -141,16 +140,6 @@ const TabManager = (function() {
 			return probData;
 		},
 		
-		getProblemUrls: function(tabId) {
-			var studentProblems = tabMap[tabId].problems;
-			var urls = studentProblems.__problemOrder.map((pNameAndIndex, i) => {
-				let pData = studentProblems[pNameAndIndex.name][pNameAndIndex.idx];
-				return genReplayUrl(pData, i === 0, !tabMap[tabId].generatedURLsForProblemSets[pData[RESET_ON]]);
-			});
-			
-			return urls;
-		},
-		
 		getNextProblemUrl: function(tabId) {
 			var tabData = tabMap[tabId],
 				nextProblemIdx = tabData.probIdx + 1;
@@ -158,26 +147,9 @@ const TabManager = (function() {
 				nextProblemData = tabMap[tabId].problems[nextProblem.name][nextProblem.idx],
 				nextProblemUrl = genReplayUrl(nextProblemData, nextProblemIdx === 0, !tabData.generatedURLsForProblemSets[nextProblemData[RESET_ON]]);
 			
+			tabMap[tabId].generatedURLsForProblemSets[problemData[RESET_ON]] = true;
+			
 			return nextProblemUrl;
-		},
-		
-		loadNextProblem: function(tabId) {
-			var tabData = tabMap[tabId];
-			tabData.probIdx++;
-			var studentProblems = studentTransactions[tabData.student];
-			var pNameAndIndex = studentProblems.__problemOrder[tabData.probIdx],
-				pName = pNameAndIndex.name;
-			var pData = studentProblems[pName][pNameAndIndex.idx];
-			
-			console.log("load problem ",pName," for student ",tabData.student);
-			console.log("problem data: ",pData);
-			
-			if (pData) {
-				let urlEncoded = genReplayUrl(pData, true, true);
-				
-				console.log("problem URL : ",urlEncoded);
-				bc.postMessage({to: tabId, type: 'load', data: urlEncoded});
-			}
 		},
 		
 		runProblem: function(tabId, probIdx) {
@@ -223,15 +195,8 @@ const TabManager = (function() {
 				msg = msg.data;
 				console.log(`got message ${msg.type} ${msg.data} from ${msg.sender}`);
 				switch(msg.type) {
-					case "next problem" :
-						tm.loadNextProblem(msg.sender);
-					break;
 					case "send steps":
 						tm.runProblem(msg.sender, msg.data);
-					break;
-					case "get urls":
-						let urls = tm.getProblemUrls(msg.sender);
-						bc.postMessage({to: msg.sender, type: 'problem_urls', data: urls});
 					break;
 					case "get next url":
 						tabMap[msg.sender].probIdx++;
@@ -449,13 +414,7 @@ function openTutorInNewWindow(onloadFunc, isLocal) {
 			problemData = studentTransactions[student][problem][0];
 		console.log("launching tab via tutorshop");
 		console.log("\tgot problem data: ",problemData);
-		url = window.location.origin+"/run_replay_problem_set_as_assignment/"+problemData.packageName+"/"+problemData.problemSet+"/"+problemData.problemName;
-		let school = problemData.school || "Default School";
-		let classname = problemData.class || "Default Class";
-		let query = "?school_name="+school+"&class_name="+classname+"&assignment_name="+problemData.assignment+"&student_name="+problemData.studentName+"&reset=false&first=false";
-		url+=query;
-		console.log("\t url (raw): ",url);
-		url = encodeURI(url);
+		url = genReplayUrl(problemData, true, true);
 		console.log("\t url (encoded): ",url);
 	}
 	if (url) {
