@@ -104,7 +104,7 @@ function genReplayUrl(problemData, reset, first) {
 		path += '/'+problemData.context;
 	}
 	let school = problemData.school || "Default School";
-	let classname = problemData.class || "Default Class";
+	let className = problemData.class || "Default Class";
 	let query = "?school_name="+school+"&class_name="+className+"&assignment_name="+problemData.assignment+"&student_name="+problemData.studentName+"&reset="+reset+"&first="+first;
 	let url = host+path+query,
 		urlEncoded = encodeURI(url);
