@@ -92,7 +92,7 @@ const MAX_STEP_DELAY = parseInt(__util.getQueryParam("max_step_delay"), 10) * 10
 const RESET_ON = __util.getQueryParam("reset_on") || "assignment";
 
 function getInterface() {
-    interfaceFilePath = (__util.getQueryParam("interfaceFilePath") || document.getElementById('fileItem2').files[0].name);
+    interfaceFilePath = (__util.getQueryParam("interface") || document.getElementById('fileItem2').files[0].name);
     console.log("getInterface", interfaceFilePath, "typeof", typeof(interfaceFilePath), "\n question_file", CTATConfiguration.get('question_file'))
 	return interfaceFilePath;
 }
@@ -240,9 +240,9 @@ function StepReplayer() {
 		studentId = sId;
 	}
 
-	this.setUiWindow = function(win, isLocal) {
+	this.setUiWindow = function(win, il) {
 		uiWindow = win;
-		isLocal = !!isLocal;
+		isLocal = !!il;
 	}
 
 	this.setStepTable = function(t) {
@@ -385,13 +385,13 @@ function prevPath() {
 }
 
 function openTutorInNewWindow(onloadFunc, isLocal) {
-	let iPath = document.getElementById("interfacePathInput").value || __util.getQueryParam("interfaceFilePath") || null,
+	let iPath = document.getElementById("interfacePathInput").value || __util.getQueryParam("interface") || null,
 		qFile = document.getElementById("questionFileInput").value || __util.getQueryParam("question_file") || null,
 		doLogging = document.getElementById("doLoggingInput").checked,
 		datasetName = document.getElementById("logDatasetInput").value || null,
 		logServiceURL = "https://pslc-qa.andrew.cmu.edu/log/server",
 		url;
-
+	isLocal = ["localhost","127.0.0.1",""].some((h)=>h === location.hostname);
 	if (isLocal) {
 		if (iPath) {
 			if (qFile) {
