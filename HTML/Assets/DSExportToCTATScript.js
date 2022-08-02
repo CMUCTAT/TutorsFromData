@@ -848,7 +848,7 @@ function buildGraphForProblem(p) {
             previousNode = newNode;
         }
     }
-
+	buildVisualization();
 }
 
 
@@ -1318,9 +1318,6 @@ function doneParse() {
 	sortReplayEnactmentData();
 	
 	buildUI();
-	if (window.__interface === "graph") {
-		buildVisualization();
-	}
 }
 
 function runReplay() {
