@@ -1069,7 +1069,7 @@ function simulateDataStream(e, parser){
         let problemName = rowVars["Problem Name"],
 			studentId = rowVars["Anon Student Id"],
 			selection = rowVars["Selection1"] ? "hint" : rowVars["Selection0"],
-			action = rowVars["Action1"] ? "ButtonPressed" : rowVars["Action0"],
+			action = rowVars["Action1"] ? "ButtonPressed" : (rowVars["Action0"] || rowVars["Action"]),
 			input = rowVars["Input"],
 			actor = (rowVars["Student Response Subtype"] === "tutor-performed") ? "tutor" : "student",
 			feedback = rowVars["Feedback Text"] || "",
