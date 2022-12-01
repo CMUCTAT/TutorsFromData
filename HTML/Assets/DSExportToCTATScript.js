@@ -147,7 +147,7 @@ const TabManager = (function() {
 				nextProblemData = tabMap[tabId].problems[nextProblem.name][nextProblem.idx],
 				nextProblemUrl = genReplayUrl(nextProblemData, nextProblemIdx === 0, !tabData.generatedURLsForProblemSets[nextProblemData[RESET_ON]]);
 			
-			tabMap[tabId].generatedURLsForProblemSets[problemData[RESET_ON]] = true;
+			tabMap[tabId].generatedURLsForProblemSets[nextProblemData[RESET_ON]] = true;
 			
 			return nextProblemUrl;
 		},
