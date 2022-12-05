@@ -88,6 +88,7 @@ var __util = (function() {
 	};
 })();
 
+const STEP_DELAY = parseInt(__util.getQueryParam("step_delay"), 10) || null;
 const MAX_STEP_DELAY = parseInt(__util.getQueryParam("max_step_delay"), 10) * 1000 || Number.POSITIVE_INFINITY;
 const RESET_ON = __util.getQueryParam("reset_on") || "assignment";
 
@@ -175,7 +176,7 @@ const TabManager = (function() {
 			
 			this.sendStep(tabId, step);
 			if (nextStep) {
-				let delay = nextStep.timestamp - step.timestamp;
+				let delay = STEP_DELAY ? STEP_DELAY : (nextStep.timestamp - step.timestamp);
 				delay = delay > MAX_STEP_DELAY ? MAX_STEP_DELAY : delay;
 				console.log("sendNextStep, this idx is ",stepIdx," setting delay = ",delay);
 				setTimeout(this.sendNextStep.bind(this, tabId, nextStepIdx), delay); 
